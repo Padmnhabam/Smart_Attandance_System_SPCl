@@ -35,8 +35,7 @@
         fetch(url, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                "ngrok-skip-browser-warning": "true"
+                "Content-Type": "application/json"
             },
             body: JSON.stringify(user)
         })
@@ -54,10 +53,10 @@
                 console.log("Login Success:", data);
                 const userData = data.user || data;
                 if (data.token) {
-                    localStorage.setItem("authToken", data.token);
+                    localStorage.setItem(role + "AuthToken", data.token);
                 }
-                localStorage.setItem("loggedUser", JSON.stringify(userData));
-                localStorage.setItem("role", role);
+                localStorage.setItem(role + "LoggedUser", JSON.stringify(userData));
+                localStorage.setItem(role + "Role", role);
 
                 // show success message
                 showMessage(`✅ welcome! redirecting to ${role} dashboard...`, 'success');

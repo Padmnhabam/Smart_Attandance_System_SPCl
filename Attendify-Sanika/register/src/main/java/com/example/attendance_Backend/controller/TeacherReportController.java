@@ -76,13 +76,18 @@ public class TeacherReportController {
     }
 
     @GetMapping("/students")
-    public ResponseEntity<List<Map<String, Object>>> getStudents(@RequestParam int teacherId) {
-        return ResponseEntity.ok(reportService.getStudentsForTeacher(teacherId));
+    public ResponseEntity<List<Map<String, Object>>> getStudents(
+            @RequestParam int teacherId,
+            @RequestParam(required = false) Integer classId,
+            @RequestParam(required = false) Integer divisionId) {
+        return ResponseEntity.ok(reportService.getStudentsForTeacher(teacherId, classId, divisionId));
     }
 
     @GetMapping("/student/{studentId}/summary")
-    public ResponseEntity<List<StudentSubjectSummaryDTO>> getStudentSummary(@PathVariable int studentId) {
-        return ResponseEntity.ok(reportService.getStudentSubjectSummary(studentId));
+    public ResponseEntity<List<StudentSubjectSummaryDTO>> getStudentSummary(
+            @PathVariable int studentId,
+            @RequestParam(required = false) Integer classId) {
+        return ResponseEntity.ok(reportService.getStudentSubjectSummary(studentId, classId));
     }
 
     @GetMapping("/student/{studentId}/records")
@@ -90,8 +95,9 @@ public class TeacherReportController {
             @PathVariable int studentId,
             @RequestParam(required = false) String subject,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(reportService.getStudentDateRecords(studentId, subject, from, to));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Integer classId) {
+        return ResponseEntity.ok(reportService.getStudentDateRecords(studentId, subject, from, to, classId));
     }
 
     @GetMapping("/student/{studentId}/monthly")

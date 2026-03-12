@@ -100,6 +100,21 @@ public class SessionController {
                 // Delete the session itself
                 sessionRepository.delete(es);
             }
+        } else if (classId != null && divisionId != null && subjectId != null && session.getTeacherId() != null) {
+            // IF NO SLOT ID, BUT WE HAVE LECTURE DETAILS, DELETE PREVIOUS SESSIONS FOR SAME
+            // LECTURE TODAY
+            LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+            LocalDateTime endOfDay = startOfDay.plusDays(1);
+            List<AttendanceSession> existingSessions = sessionRepository
+                    .findByLectureDetails(
+                            classId, divisionId, subjectId, session.getTeacherId(), adminId, startOfDay, endOfDay);
+
+            for (AttendanceSession es : existingSessions) {
+                // Delete associated attendance records first
+                attendanceRepository.deleteBySessionIdAndAdminId(es.getId(), adminId);
+                // Delete the session itself
+                sessionRepository.delete(es);
+            }
         }
 
         sessionRepository.save(session);

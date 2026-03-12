@@ -9,7 +9,7 @@ window.fetch = (input, init = {}) => {
         return originalFetch(input, init);
     }
 
-    const token = localStorage.getItem("authToken");
+    const token = (localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'));
     const headers = new Headers(init.headers || {});
     if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);
@@ -19,9 +19,9 @@ window.fetch = (input, init = {}) => {
 };
 
 // ----------------- GET LOGGED-IN USER -----------------
-const user = JSON.parse(localStorage.getItem("loggedUser"));
-const role = localStorage.getItem("role");
-const token = localStorage.getItem("authToken");
+const user = JSON.parse((localStorage.getItem('studentLoggedUser') || localStorage.getItem('loggedUser')));
+const role = (localStorage.getItem('studentRole') || localStorage.getItem('role'));
+const token = (localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'));
 
 if (!user || role !== "student" || !token) {
     // user not authenticated; redirect to login in same folder
@@ -174,7 +174,7 @@ function showSection(id) {
 
 // ----------------- LOGOUT -----------------
 function logout() {
-    localStorage.clear();
+    localStorage.removeItem('studentAuthToken'); localStorage.removeItem('studentLoggedUser'); localStorage.removeItem('studentRole'); localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
     window.location.href = "login.html";
 }
 
@@ -209,7 +209,7 @@ function setupFilters() {
 
 async function checkAttendanceStatus() {
     try {
-        const user = JSON.parse(localStorage.getItem("loggedUser"));
+        const user = JSON.parse((localStorage.getItem('studentLoggedUser') || localStorage.getItem('loggedUser')));
         const studentId = user.id;
 
         const response = await fetch(`/api/attendance/check/${studentId}`);
@@ -475,7 +475,7 @@ async function saveSetup() {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
-                ...(localStorage.getItem("authToken") ? { "Authorization": `Bearer ${localStorage.getItem("authToken")}` } : {})
+                ...((localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken')) ? { "Authorization": `Bearer ${(localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'))}` } : {})
             },
             body: JSON.stringify(payload)
         });
@@ -485,12 +485,12 @@ async function saveSetup() {
         const updatedUser = await res.json();
 
         // Ensure role is preserved in localStorage if not in response
-        const currentRole = localStorage.getItem("role") || "student";
-        const currentToken = localStorage.getItem("authToken");
+        const currentRole = (localStorage.getItem('studentRole') || localStorage.getItem('role')) || "student";
+        const currentToken = (localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'));
 
-        localStorage.setItem("loggedUser", JSON.stringify(updatedUser));
-        localStorage.setItem("role", currentRole);
-        if (currentToken) localStorage.setItem("authToken", currentToken);
+        localStorage.setItem('studentLoggedUser', JSON.stringify(updatedUser));
+        localStorage.setItem('studentRole', currentRole);
+        if (currentToken) localStorage.setItem('studentAuthToken', currentToken);
 
         // Success - hide modal and refresh or update UI
         document.getElementById("setupModal").style.display = "none";

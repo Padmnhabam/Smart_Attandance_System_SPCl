@@ -63,7 +63,12 @@ public class StudAttendanceService {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return java.util.Collections.emptyList();
-        return repository.getStudentSubjectSummary(studentId, adminId);
+
+        Optional<User> user = userRepository.findById(studentId);
+        if (user.isPresent() && user.get().getClassMaster() != null) {
+            return repository.getStudentSubjectSummary(studentId, adminId, user.get().getClassMaster().getId());
+        }
+        return java.util.Collections.emptyList();
     }
 
     public DashboardDTO getDashboardData(int userId) {

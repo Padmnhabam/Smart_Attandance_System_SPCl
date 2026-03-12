@@ -47,13 +47,22 @@ public class TeacherReportService {
         return attendanceRepository.getTeacherClassReport(teacherId);
     }
 
-    /** Get distinct students from teacher's sessions */
-    public List<Map<String, Object>> getStudentsForTeacher(int teacherId) {
+    /**
+     * Get distinct students from teacher's sessions with optional class/division
+     * filter
+     */
+    public List<Map<String, Object>> getStudentsForTeacher(int teacherId, Integer classId, Integer divisionId) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return Collections.emptyList();
 
-        List<User> users = attendanceRepository.getStudentsForTeacher(teacherId, adminId);
+        List<User> users;
+        if (classId != null || divisionId != null) {
+            users = attendanceRepository.getFilteredStudentsForTeacher(teacherId, classId, divisionId, adminId);
+        } else {
+            users = attendanceRepository.getStudentsForTeacher(teacherId, adminId);
+        }
+
         return users.stream().map(u -> {
             Map<String, Object> m = new HashMap<>();
             m.put("id", u.getId());
@@ -65,24 +74,35 @@ public class TeacherReportService {
     }
 
     /** Student's subject-wise breakdown (teacher viewing a specific student) */
-    public List<StudentSubjectSummaryDTO> getStudentSubjectSummary(int studentId) {
+    public List<StudentSubjectSummaryDTO> getStudentSubjectSummary(int studentId, Integer classId) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return Collections.emptyList();
 
         // Verify student belongs to this admin
-        if (userRepository.findByIdAndAdminId(studentId, adminId).isEmpty()) {
+        Optional<User> student = userRepository.findByIdAndAdminId(studentId, adminId);
+        if (student.isEmpty()) {
             return Collections.emptyList();
         }
 
-        return attendanceRepository.getStudentSubjectSummary(studentId, adminId);
+        // If classId is provided, filter by it. Otherwise fallback to student's primary
+        // class
+        int effectiveClassId = (classId != null) ? classId
+                : (student.get().getClassMaster() != null ? student.get().getClassMaster().getId() : -1);
+
+        if (effectiveClassId == -1) {
+            return Collections.emptyList();
+        }
+
+        return attendanceRepository.getStudentSubjectSummary(studentId, adminId, effectiveClassId);
     }
 
     /** Student's date-wise records with optional subject and date filter */
     public List<StudentDateRecordDTO> getStudentDateRecords(int studentId,
             String subject,
             LocalDate fromDate,
-            LocalDate toDate) {
+            LocalDate toDate,
+            Integer classId) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return Collections.emptyList();
@@ -92,7 +112,7 @@ public class TeacherReportService {
             return Collections.emptyList();
         }
 
-        return attendanceRepository.getStudentDateRecords(studentId, adminId, subject, fromDate, toDate);
+        return attendanceRepository.getStudentDateRecords(studentId, adminId, subject, fromDate, toDate, classId);
     }
 
     // =====================
@@ -148,8 +168,9 @@ public class TeacherReportService {
                 .map(cs -> cs.getSubjectMaster().getSubjectName())
                 .collect(Collectors.toList());
 
-        // 2. Get all students of this class
-        List<User> students = userRepository.findByClassMaster_IdAndAdminId(classId, adminId);
+        // 2. Get all students who either belong to this class OR have any attendance
+        // for it
+        List<User> students = attendanceRepository.getStudentsForClassAttendance(classId, adminId);
 
         List<StudentConsolidatedDTO> studentDTOs = new ArrayList<>();
 
@@ -160,7 +181,7 @@ public class TeacherReportService {
 
             // Fetch summary for this student
             List<StudentSubjectSummaryDTO> summaries = attendanceRepository.getStudentSubjectSummary(student.getId(),
-                    adminId);
+                    adminId, classId);
             Map<String, StudentSubjectSummaryDTO> summaryMap = summaries.stream()
                     .collect(Collectors.toMap(StudentSubjectSummaryDTO::getSubject, s -> s));
 

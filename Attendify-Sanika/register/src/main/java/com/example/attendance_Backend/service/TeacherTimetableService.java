@@ -44,12 +44,12 @@ public class TeacherTimetableService {
         this.subjectMasterRepo = subjectMasterRepo;
     }
 
-    /** Full week grid for this teacher */
     public List<TeacherTimetable> getFullTimetable(int teacherId) {
         Long adminId = AdminContextHolder.getAdminId();
-        if (adminId == null)
-            return java.util.Collections.emptyList();
-        return ttRepo.findByTeacherIdAndAdminId(teacherId, adminId);
+        if (adminId != null) {
+            return ttRepo.findByTeacherIdAndAdminId(teacherId, adminId);
+        }
+        return ttRepo.findByTeacherId(teacherId);
     }
 
     /**
@@ -57,15 +57,16 @@ public class TeacherTimetableService {
      * Returns list with label like "Period 1 — Java - MCA I-A — Room 201"
      */
     public List<TeacherTimetable> getTodayLectures(int teacherId) {
-        Long adminId = AdminContextHolder.getAdminId();
-        if (adminId == null)
-            return java.util.Collections.emptyList();
-
         String today = LocalDate.now()
                 .getDayOfWeek()
                 .getDisplayName(TextStyle.FULL, Locale.ENGLISH)
                 .toUpperCase(); // e.g. MONDAY
-        return ttRepo.findByTeacherIdAndDayAndAdminId(teacherId, today, adminId);
+
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId != null) {
+            return ttRepo.findByTeacherIdAndDayAndAdminId(teacherId, today, adminId);
+        }
+        return ttRepo.findByTeacherIdAndDay(teacherId, today);
     }
 
     /** Save or update a single timetable cell */

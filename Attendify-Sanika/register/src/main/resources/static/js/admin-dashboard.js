@@ -13,7 +13,7 @@ window.fetch = (input, init = {}) => {
         return originalFetch(input, init);
     }
 
-    const token = localStorage.getItem("authToken");
+    const token = (localStorage.getItem('adminAuthToken') || localStorage.getItem('authToken'));
     const headers = new Headers(init.headers || {});
     if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);
@@ -578,7 +578,7 @@ function exportToCSV() {
 // =========================
 // Logout
 function logout() {
-    localStorage.clear();
+    localStorage.removeItem('adminAuthToken'); localStorage.removeItem('adminLoggedUser'); localStorage.removeItem('adminRole'); localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
     // use local path to avoid duplicating /public when already under /public
     window.location.href = 'login.html';
 }
@@ -1013,8 +1013,8 @@ async function saveMasterData(e) {
 // =========================
 // Initial Load
 document.addEventListener("DOMContentLoaded", function () {
-    const role = localStorage.getItem("role");
-    const token = localStorage.getItem("authToken");
+    const role = (localStorage.getItem('adminRole') || localStorage.getItem('role'));
+    const token = (localStorage.getItem('adminAuthToken') || localStorage.getItem('authToken'));
     if (role !== "admin" || !token) {
         // redirect within same folder, not up one level
         window.location.href = "login.html";
