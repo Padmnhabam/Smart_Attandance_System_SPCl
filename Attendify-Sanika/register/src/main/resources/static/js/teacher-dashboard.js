@@ -10,7 +10,7 @@ window.fetch = (input, init = {}) => {
         return originalFetch(input, init);
     }
 
-    const token = localStorage.getItem("authToken");
+    const token = (localStorage.getItem('teacherAuthToken') || localStorage.getItem('authToken'));
     const headers = new Headers(init.headers || {});
     if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);
@@ -51,8 +51,8 @@ function loadTeacherDeviceId() {
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function () {
     // Check authentication
-    const role = localStorage.getItem("role");
-    const userData = JSON.parse(localStorage.getItem("loggedUser"));
+    const role = (localStorage.getItem('teacherRole') || localStorage.getItem('role'));
+    const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
 
     // Security check
     if (!userData || role !== "teacher") {
@@ -282,7 +282,7 @@ async function populateSharedMasterData() {
 
 
 function getTeacherId() {
-    const userData = JSON.parse(localStorage.getItem("loggedUser"));
+    const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
     return userData?.id || null;
 }
 
@@ -339,7 +339,7 @@ function setupQRGenerator() {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                        'Authorization': `Bearer ${(localStorage.getItem('teacherAuthToken') || localStorage.getItem('authToken')) || ''}`
                     },
                     body: JSON.stringify(payload)
                 })
@@ -383,8 +383,8 @@ function generateQRCode(className, division, duration, sessionId) {
     const qrImage = document.getElementById('qrImage');
     const qrTimer = document.getElementById('qrTimer');
 
-    // Base URL for students (hardcoded for current ngrok tunnel per user request)
-    const base = `https://migdalia-counterproductive-leanora.ngrok-free.dev/public/student-attendance.html`;
+    // Base URL for students (dynamic based on current host)
+    const base = `${window.location.origin}/public/student-attendance.html`;
 
     const qrParams = new URLSearchParams();
     qrParams.append("class", className);
@@ -588,6 +588,47 @@ function setupStudentsTab() {
             loadStudentsForSelectedClass();
         });
     }
+
+    // Initialize Add Student Dropdowns
+    populateAddStudentDropdowns();
+}
+
+async function populateAddStudentDropdowns() {
+    const classSelect = document.getElementById('newStudentClass');
+    const divSelect = document.getElementById('newStudentDivision');
+    if (!classSelect || !divSelect) return;
+
+    try {
+        const res = await fetch('/api/master/classes');
+        const classes = await res.json();
+        classSelect.innerHTML = '<option value="">-- Select Class --</option>';
+        classes.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.className || c.name;
+            classSelect.appendChild(opt);
+        });
+
+        classSelect.onchange = async () => {
+            const classId = classSelect.value;
+            divSelect.innerHTML = '<option value="">-- Select Division --</option>';
+            divSelect.disabled = true;
+
+            if (!classId) return;
+
+            const resDiv = await fetch(`/api/master/classes/${classId}/divisions`);
+            const divisions = await resDiv.json();
+            divisions.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.divisionName || d.name;
+                divSelect.appendChild(opt);
+            });
+            divSelect.disabled = false;
+        };
+    } catch (err) {
+        console.error("Error loading master data for Add Student:", err);
+    }
 }
 
 // Setup Teacher Profile
@@ -657,7 +698,7 @@ function updateTeacherProfileUI(t) {
 }
 
 function setupTeacherProfile() {
-    const userData = JSON.parse(localStorage.getItem('loggedUser'));
+    const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
     if (!userData) return;
 
     // Fetch and populate EVERYTHING on startup
@@ -828,7 +869,7 @@ async function fetchTeacherData(identifier) {
 }
 
 function loadTeacherProfileContent() {
-    const userData = JSON.parse(localStorage.getItem("loggedUser"));
+    const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
     if (userData?.email) fetchTeacherData(userData.email);
 }
 
@@ -1344,9 +1385,9 @@ function saveTeacherDepartment() {
             // Refresh UI
             updateTeacherProfileUI(updatedTeacher);
             // Update local storage so names are consistent
-            const userData = JSON.parse(localStorage.getItem('loggedUser'));
+            const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
             userData.department = updatedTeacher.department;
-            localStorage.setItem('loggedUser', JSON.stringify(userData));
+            localStorage.setItem('teacherLoggedUser', JSON.stringify(userData));
 
             alert("Department updated successfully!");
         })
@@ -1413,31 +1454,29 @@ function saveSettings() {
 
 // Add new student
 function addNewStudent() {
-
     const name = document.getElementById('newStudentName').value;
     const rollNo = document.getElementById('newStudentId').value;
-    const className = document.getElementById('newStudentClass').value;
-    // const division = document.getElementById('newStudentDivision').value;
+    const classId = document.getElementById('newStudentClass').value;
+    const divisionId = document.getElementById('newStudentDivision').value;
     const email = document.getElementById('newStudentEmail').value;
     const address = document.getElementById('newStudentAddress').value;
     const mobilenumber = document.getElementById('newStudentPhone').value;
 
-    if (!name || !rollNo || !className || !email || !address || !mobilenumber) {
+    if (!name || !rollNo || !classId || !divisionId || !email) {
         alert('Please fill all required fields');
         return;
     }
 
-
     const data = {
         name: name,
         rollNo: rollNo,
-        className: className,
+        classMaster: { id: parseInt(classId) },
+        divisionMaster: { id: parseInt(divisionId) },
         password: rollNo,
         email: email,
         address: address,
         mobilenumber: mobilenumber
     };
-
 
     fetch("/api/attendance/add-student", {
         method: "POST",
@@ -1451,6 +1490,7 @@ function addNewStudent() {
         .then(msg => {
             alert(msg);
             document.getElementById('addStudentForm').reset();
+            document.getElementById('newStudentDivision').disabled = true;
             loadStudentsContent();
             showSubTab('students-tab', 'student-list');
         })
@@ -1499,7 +1539,7 @@ function openEditProfileModal() {
         modal.style.display = 'flex';
 
         // Populate form with current data
-        const userData = JSON.parse(localStorage.getItem("loggedUser"));
+        const userData = JSON.parse((localStorage.getItem('teacherLoggedUser') || localStorage.getItem('loggedUser')));
         document.getElementById('editTeacherName').value = userData?.name || '';
         document.getElementById('editTeacherEmail').value = userData?.email || '';
         document.getElementById('editTeacherPhone').value = userData?.mobilenumber || '';
@@ -1768,7 +1808,7 @@ function deleteClass(classId) {
 
 // Logout function
 function logout() {
-    localStorage.clear();
+    localStorage.removeItem('teacherAuthToken'); localStorage.removeItem('teacherLoggedUser'); localStorage.removeItem('teacherRole'); localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
     window.location.href = "login.html";
 }
 
@@ -2418,7 +2458,11 @@ async function loadStudentSubjectSummary() {
     if (!studentId) { alert('Please select a student.'); return; }
 
     try {
-        const res = await fetch(`/api/attendance/reports/student/${studentId}/summary`);
+        const classId = document.getElementById('reportStudentFilterClass')?.value;
+        let url = `/api/attendance/reports/student/${studentId}/summary`;
+        if (classId) url += `?classId=${classId}`;
+
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
@@ -2454,11 +2498,14 @@ async function loadStudentDateRecords() {
     const from = document.getElementById('studentFromDate').value || null;
     const to = document.getElementById('studentToDate').value || null;
 
+    const classId = document.getElementById('reportStudentFilterClass')?.value;
+
     let url = `/api/attendance/reports/student/${studentId}/records`;
     const params = new URLSearchParams();
     if (subject) params.append('subject', subject);
     if (from) params.append('from', from);
     if (to) params.append('to', to);
+    if (classId) params.append('classId', classId);
     if ([...params].length) url += '?' + params.toString();
 
     try {
@@ -2513,7 +2560,7 @@ async function loadTimetableGrid() {
 
     try {
         // 1. Load timetable structure (period/break rows defined by admin)
-        const authToken = localStorage.getItem('authToken') || '';
+        const authToken = (localStorage.getItem('teacherAuthToken') || localStorage.getItem('authToken')) || '';
         const structRes = await fetch('/api/teacher/timetable/structure', {
             headers: { 'Authorization': 'Bearer ' + authToken }
         });
@@ -2984,17 +3031,44 @@ async function setupMonthlyReportFilters() {
         if (yearInput && !yearInput.value) yearInput.value = now.getFullYear();
         if (monthInput && !monthInput.value) monthInput.value = now.getMonth() + 1;
 
+        // Initial state: Division selector disabled until class is selected
+        divSelector.innerHTML = '<option value="">-- Select Class First --</option>';
+        divSelector.disabled = true;
+
         // Fetch classes
         const classRes = await fetch('/api/master/classes');
         const classes = await classRes.json();
         classSelector.innerHTML = '<option value="">-- Select Class --</option>' +
             classes.map(c => `<option value="${c.id}">${c.className}</option>`).join('');
 
-        // Fetch divisions
-        const divRes = await fetch('/api/master/divisions');
-        const divisions = await divRes.json();
-        divSelector.innerHTML = '<option value="">-- Select Division --</option>' +
-            divisions.map(d => `<option value="${d.id}">${d.divisionName}</option>`).join('');
+        // Handle class change to load divisions
+        classSelector.onchange = async () => {
+            const classId = classSelector.value;
+            if (!classId) {
+                divSelector.innerHTML = '<option value="">-- Select Class First --</option>';
+                divSelector.disabled = true;
+                return;
+            }
+
+            try {
+                divSelector.innerHTML = '<option value="">Loading divisions...</option>';
+                const divsRes = await fetch(`/api/master/classes/${classId}/divisions`);
+                if (!divsRes.ok) throw new Error("Failed to fetch divisions");
+                const divisions = await divsRes.json();
+
+                if (divisions.length === 0) {
+                    divSelector.innerHTML = '<option value="">No divisions found</option>';
+                    divSelector.disabled = true;
+                } else {
+                    divSelector.innerHTML = '<option value="">-- Select Division --</option>' +
+                        divisions.map(d => `<option value="${d.id}">${d.divisionName}</option>`).join('');
+                    divSelector.disabled = false;
+                }
+            } catch (err) {
+                console.error("Error loading divisions:", err);
+                divSelector.innerHTML = '<option value="">Error loading divisions</option>';
+            }
+        };
 
     } catch (e) {
         console.error("Monthly report filters error:", e);
@@ -3017,8 +3091,17 @@ async function downloadMonthlyExcel() {
 
     try {
         const url = `/api/attendance/monthly-report?classId=${classId}&divisionId=${divId}&month=${month}&year=${year}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to fetch monthly report data");
+        const authToken = localStorage.getItem('teacherAuthToken') || '';
+        const res = await fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+
+        if (res.status === 401 || res.status === 403) {
+            statusEl.innerHTML = '<span style="color:#ef4444;">Session expired. Please login again.</span>';
+            return;
+        }
+
+        if (!res.ok) throw new Error("Failed to fetch monthly report data: " + res.status);
         const data = await res.json();
 
         if (!data.students || data.students.length === 0) {

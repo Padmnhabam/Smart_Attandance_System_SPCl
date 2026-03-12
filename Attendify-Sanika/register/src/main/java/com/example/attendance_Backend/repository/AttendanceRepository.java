@@ -32,6 +32,12 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     @Query("DELETE FROM Attendance a WHERE a.sessionId = :sessionId AND a.admin.id = :adminId")
     void deleteBySessionIdAndAdminId(@Param("sessionId") String sessionId, @Param("adminId") Long adminId);
 
+    @Query("SELECT a FROM Attendance a JOIN FETCH a.user JOIN FETCH a.classMaster WHERE a.admin.id = :adminId")
+    List<Attendance> findAllWithDetails(@Param("adminId") Long adminId);
+
+    @Query("SELECT a FROM Attendance a JOIN FETCH a.user JOIN FETCH a.classMaster")
+    List<Attendance> findAllWithDetails();
+
     @Query("SELECT COUNT(a) FROM Attendance a WHERE a.user.id = :id AND a.admin.id = :adminId")
     int totalClasses(@Param("id") int userId, @Param("adminId") Long adminId);
 
@@ -97,50 +103,47 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
             @Param("subject") String subject,
             @Param("adminId") Long adminId);
 
-    @Query("""
-            SELECT new com.example.attendance_Backend.dto.StudentAttendanceDTO(
-                u.id,
-                u.rollNo,
-                u.name,
-                u.classMaster.className,
-                COALESCE(a.subjectMaster.subjectName, '-'),
-                COALESCE(a.status, 'Absent')
-            )
-            FROM User u
-            LEFT JOIN Attendance a
-                ON a.user = u
+    @Query(value = """
+            SELECT u.id, u.roll_no, u.name,
+                   COALESCE(cm.class_name, '-') AS class_name,
+                   COALESCE(sm.subject_name, '-') AS subject_name,
+                   COALESCE(a.status, 'Absent') AS status
+            FROM users u
+            LEFT JOIN class_master cm ON cm.id = u.class_id
+            LEFT JOIN division_master dm ON dm.id = u.division_id
+            LEFT JOIN attendance a ON a.user_id = u.id
                 AND a.date = CURRENT_DATE
-                AND (:subjectId IS NULL OR a.subjectMaster.id = :subjectId)
-            WHERE (:classId IS NULL OR u.classMaster.id = :classId)
-            AND (:divisionId IS NULL OR u.divisionMaster.id = :divisionId)
-            AND (u.role = 'STUDENT')
-            AND (u.admin.id = :adminId)
-            ORDER BY u.rollNo
-            """)
-    List<StudentAttendanceDTO> getFilteredStudentTabData(
+                AND (:subjectId IS NULL OR a.subject_id = :subjectId)
+            LEFT JOIN subject_master sm ON sm.id = a.subject_id
+            WHERE u.role = 'STUDENT'
+            AND u.admin_id = :adminId
+            AND (:classId IS NULL OR u.class_id = :classId)
+            AND (:divisionId IS NULL OR u.division_id = :divisionId)
+            ORDER BY u.roll_no
+            """,
+            nativeQuery = true)
+    List<Object[]> getFilteredStudentTabDataNative(
             @Param("classId") Integer classId,
             @Param("divisionId") Integer divisionId,
             @Param("subjectId") Integer subjectId,
             @Param("adminId") Long adminId);
 
-    @Query("""
-            SELECT new com.example.attendance_Backend.dto.StudentAttendanceDTO(
-                u.id,
-                u.rollNo,
-                u.name,
-                u.classMaster.className,
-                COALESCE(a.subjectMaster.subjectName, '-'),
-                COALESCE(a.status, 'Absent')
-            )
-            FROM User u
-            LEFT JOIN Attendance a
-                ON a.user = u
-                AND a.date = CURRENT_DATE
+    @Query(value = """
+            SELECT u.id, u.roll_no, u.name,
+                   COALESCE(cm.class_name, '-') AS class_name,
+                   COALESCE(sm.subject_name, '-') AS subject_name,
+                   COALESCE(a.status, 'Absent') AS status
+            FROM users u
+            LEFT JOIN class_master cm ON cm.id = u.class_id
+            LEFT JOIN attendance a ON a.user_id = u.id AND a.date = CURRENT_DATE
+            LEFT JOIN subject_master sm ON sm.id = a.subject_id
             WHERE u.role = 'STUDENT'
-            AND u.admin.id = :adminId
-            ORDER BY u.rollNo
-            """)
-    List<StudentAttendanceDTO> getStudentTabData(@Param("adminId") Long adminId);
+            AND u.admin_id = :adminId
+            ORDER BY u.roll_no
+            """,
+            nativeQuery = true)
+    List<Object[]> getStudentTabDataNative(@Param("adminId") Long adminId);
+
 
     @Query("""
                 SELECT a FROM Attendance a
@@ -162,7 +165,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 )
                 FROM Attendance a
                 JOIN a.user u
-                WHERE u.classMaster.className = :className
+                WHERE a.classMaster.className = :className
                 AND a.admin.id = :adminId
                 ORDER BY a.date DESC
             """)
@@ -183,15 +186,14 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
 
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.SubjectAnalyticsDTO(
-                    u.classMaster.className,
+                    a.classMaster.className,
                     COUNT(a),
                     COALESCE(SUM(CASE WHEN LOWER(a.status) = 'present' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN LOWER(a.status) = 'absent' THEN 1 ELSE 0 END), 0)
                 )
                 FROM Attendance a
-                JOIN a.user u
                 WHERE a.admin.id = :adminId
-                GROUP BY u.classMaster.className
+                GROUP BY a.classMaster.className
             """)
     List<SubjectAnalyticsDTO> getDepartmentAnalyticsByAdminId(@Param("adminId") Long adminId);
 
@@ -271,11 +273,11 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
      */
     @Query("""
                 SELECT DISTINCT u
-                FROM Attendance a
-                JOIN a.user u
-                WHERE (:classId IS NULL OR u.classMaster.id = :classId)
+                FROM User u
+                WHERE u.admin.id = :adminId
+                AND u.role = 'STUDENT'
+                AND (:classId IS NULL OR u.classMaster.id = :classId)
                 AND (:divisionId IS NULL OR u.divisionMaster.id = :divisionId)
-                AND u.admin.id = :adminId
                 ORDER BY u.name
             """)
     List<com.example.attendance_Backend.model.User> getFilteredStudentsForTeacher(
@@ -284,12 +286,25 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
             @Param("divisionId") Integer divisionId,
             @Param("adminId") Long adminId);
 
-    /** Get all distinct students who have any attendance record */
+    /**
+     * Get all distinct students who have any attendance record or belong to classes
+     * the teacher might have taught
+     */
     @Query("""
                 SELECT DISTINCT u
-                FROM Attendance a
-                JOIN a.user u
+                FROM User u
+                LEFT JOIN Attendance a ON a.user = u
                 WHERE u.admin.id = :adminId
+                AND u.role = 'STUDENT'
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM Attendance att
+                        WHERE att.user = u
+                        AND (att.classMaster IN (SELECT cs.classMaster FROM ClassSubject cs WHERE cs.admin.id = :adminId))
+                    )
+                    OR
+                    (u.classMaster IS NOT NULL)
+                )
                 ORDER BY u.name
             """)
     List<com.example.attendance_Backend.model.User> getStudentsForTeacher(
@@ -301,15 +316,14 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
      */
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.ClassAttendanceDTO(
-                    u.classMaster.className,
+                    a.classMaster.className,
                     SUM(CASE WHEN LOWER(a.status) = 'present' THEN 1L ELSE 0L END),
                     COUNT(a)
                 )
                 FROM Attendance a
-                JOIN a.user u
-                WHERE u.classMaster IS NOT NULL
+                WHERE a.classMaster IS NOT NULL
                 AND a.admin.id = :adminId
-                GROUP BY u.classMaster.className
+                GROUP BY a.classMaster.className
             """)
     List<com.example.attendance_Backend.dto.ClassAttendanceDTO> getTeacherClassReportByAdminId(
             @Param("adminId") Long adminId);
@@ -317,14 +331,13 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     // Legacy method
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.ClassAttendanceDTO(
-                    u.classMaster.className,
+                    a.classMaster.className,
                     SUM(CASE WHEN LOWER(a.status) = 'present' THEN 1L ELSE 0L END),
                     COUNT(a)
                 )
                 FROM Attendance a
-                JOIN a.user u
-                WHERE u.classMaster IS NOT NULL
-                GROUP BY u.classMaster.className
+                WHERE a.classMaster IS NOT NULL
+                GROUP BY a.classMaster.className
             """)
     List<com.example.attendance_Backend.dto.ClassAttendanceDTO> getTeacherClassReport(
             @Param("teacherId") int teacherId);
@@ -333,7 +346,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     // STUDENT ANALYTICS QUERIES
     // ==========================================
 
-    /** Student's subject-wise attendance summary */
+    /** Student's subject-wise attendance summary — Isolated by Class */
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.StudentSubjectSummaryDTO(
                     a.subjectMaster.subjectName,
@@ -343,11 +356,13 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 FROM Attendance a
                 WHERE a.user.id = :studentId
                 AND a.admin.id = :adminId
+                AND a.classMaster.id = :classId
                 GROUP BY a.subjectMaster.subjectName
             """)
     List<com.example.attendance_Backend.dto.StudentSubjectSummaryDTO> getStudentSubjectSummary(
             @Param("studentId") int studentId,
-            @Param("adminId") Long adminId);
+            @Param("adminId") Long adminId,
+            @Param("classId") int classId);
 
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.StudentDateRecordDTO(
@@ -359,6 +374,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 AND (:subject IS NULL OR a.subjectMaster.subjectName = :subject)
                 AND (:fromDate IS NULL OR a.date >= :fromDate)
                 AND (:toDate IS NULL OR a.date <= :toDate)
+                AND (:classId IS NULL OR a.classMaster.id = :classId)
                 ORDER BY a.date DESC
             """)
     List<com.example.attendance_Backend.dto.StudentDateRecordDTO> getStudentDateRecords(
@@ -366,7 +382,8 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
             @Param("adminId") Long adminId,
             @Param("subject") String subject,
             @Param("fromDate") LocalDate fromDate,
-            @Param("toDate") LocalDate toDate);
+            @Param("toDate") LocalDate toDate,
+            @Param("classId") Integer classId);
 
     /** Student's monthly attendance breakdown */
     @Query("""
@@ -392,15 +409,14 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     /** Class-wise attendance report for admin */
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.ClassAttendanceDTO(
-                    u.classMaster.className,
+                    a.classMaster.className,
                     SUM(CASE WHEN LOWER(a.status) = 'present' THEN 1L ELSE 0L END),
                     COUNT(a)
                 )
                 FROM Attendance a
-                JOIN a.user u
-                WHERE u.classMaster IS NOT NULL
+                WHERE a.classMaster IS NOT NULL
                 AND a.admin.id = :adminId
-                GROUP BY u.classMaster.className
+                GROUP BY a.classMaster.className
             """)
     List<com.example.attendance_Backend.dto.ClassAttendanceDTO> getClassAttendanceReportByAdminId(
             @Param("adminId") Long adminId);
@@ -437,27 +453,46 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
      * presentCount (Long), totalCount (Long)]
      */
     @Query("""
-                SELECT a.user.id,
-                       a.user.rollNo,
-                       a.user.name,
-                       a.subjectMaster.subjectName,
-                       SUM(CASE WHEN LOWER(a.status) = 'present' THEN 1L ELSE 0L END),
+                SELECT u.id,
+                       u.rollNo,
+                       u.name,
+                       COALESCE(a.subjectMaster.subjectName, 'N/A'),
+                       SUM(CASE WHEN a IS NOT NULL AND LOWER(a.status) = 'present' THEN 1L ELSE 0L END),
                        COUNT(a)
-                FROM Attendance a
-                WHERE a.classMaster.id = :classId
-                AND a.divisionMaster.id = :divisionId
-                AND MONTH(a.date) = :month
-                AND YEAR(a.date) = :year
-                AND a.user.role = 'STUDENT'
-                AND a.admin.id = :adminId
-                GROUP BY a.user.id, a.user.rollNo, a.user.name, a.subjectMaster.subjectName
-                ORDER BY a.user.rollNo ASC
+                FROM User u
+                LEFT JOIN Attendance a
+                    ON a.user = u
+                    AND MONTH(a.date) = :month
+                    AND YEAR(a.date) = :year
+                    AND a.admin.id = :adminId
+                WHERE u.classMaster.id = :classId
+                AND u.divisionMaster.id = :divisionId
+                AND u.role = 'STUDENT'
+                AND u.admin.id = :adminId
+                GROUP BY u.id, u.rollNo, u.name, a.subjectMaster.subjectName
+                ORDER BY u.rollNo ASC
             """)
     List<Object[]> getMonthlyReportRaw(
             @Param("classId") int classId,
             @Param("divisionId") int divisionId,
             @Param("month") int month,
             @Param("year") int year,
+            @Param("adminId") Long adminId);
+
+    @Query("""
+                SELECT DISTINCT u
+                FROM User u
+                LEFT JOIN Attendance a ON a.user = u
+                WHERE u.admin.id = :adminId
+                AND u.role = 'STUDENT'
+                AND (
+                    u.classMaster.id = :classId
+                    OR
+                    (a.classMaster.id = :classId AND a.admin.id = :adminId)
+                )
+            """)
+    List<com.example.attendance_Backend.model.User> getStudentsForClassAttendance(
+            @Param("classId") int classId,
             @Param("adminId") Long adminId);
 
 }

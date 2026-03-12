@@ -25,13 +25,15 @@ function loadDeviceId() {
       console.log("Device ID loaded:", deviceId);
     })
     .catch(err => {
-      console.error("FingerprintJS error:", err);
-      msgEl.textContent = "Security verification failed to load ❌";
+      console.error("FingerprintJS error (likely blocked by AdBlocker):", err);
+      // Fallback: Generate a random UUID block just for this session so they aren't completely stuck
+      deviceId = 'fallback-' + Math.random().toString(36).substring(2, 15);
+      console.log("Using fallback Device ID:", deviceId);
     });
 }
 
-// Load device ID when page opens
-document.addEventListener("DOMContentLoaded", loadDeviceId);
+// Load device ID immediately if possible, or wait
+loadDeviceId();
 
 document.getElementById("attendanceForm").addEventListener("submit", e => {
   e.preventDefault();
@@ -41,6 +43,7 @@ document.getElementById("attendanceForm").addEventListener("submit", e => {
   if (!deviceId) {
     msgEl.textContent = "Still verifying your device... please try again in a second. ⏳";
     msgEl.style.color = "orange";
+    loadDeviceId(); // trigger it again just in case it failed silently
     return;
   }
 

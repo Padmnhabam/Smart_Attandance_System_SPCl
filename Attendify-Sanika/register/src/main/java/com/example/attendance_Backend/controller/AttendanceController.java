@@ -125,9 +125,9 @@ public class AttendanceController {
         attendance.setSessionId(sessionId);
         attendance.setAdmin(admin);
 
-        // Fix: Set class and division from student profile for reporting
-        attendance.setClassMaster(user.getClassMaster());
-        attendance.setDivisionMaster(user.getDivisionMaster());
+        // Use the class and division from the actual Attendance Session
+        attendance.setClassMaster(session.getClassMaster());
+        attendance.setDivisionMaster(session.getDivisionMaster());
 
         attendanceRepository.save(attendance);
         response.put("message", "Attendance marked successfully ✅");
@@ -234,10 +234,25 @@ public class AttendanceController {
         if (adminId == null)
             return java.util.Collections.emptyList();
 
+        List<Object[]> rows;
         if (classId == null && divisionId == null && subjectId == null) {
-            return attendanceRepository.getStudentTabData(adminId);
+            rows = attendanceRepository.getStudentTabDataNative(adminId);
+        } else {
+            rows = attendanceRepository.getFilteredStudentTabDataNative(classId, divisionId, subjectId, adminId);
         }
-        return attendanceRepository.getFilteredStudentTabData(classId, divisionId, subjectId, adminId);
+
+        // Map Object[] rows -> StudentAttendanceDTO
+        List<StudentAttendanceDTO> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            int id = row[0] instanceof Number ? ((Number) row[0]).intValue() : 0;
+            String rollNo    = row[1] != null ? row[1].toString() : "";
+            String name      = row[2] != null ? row[2].toString() : "";
+            String className = row[3] != null ? row[3].toString() : "-";
+            String subject   = row[4] != null ? row[4].toString() : "-";
+            String status    = row[5] != null ? row[5].toString() : "Absent";
+            result.add(new StudentAttendanceDTO(id, rollNo, name, className, subject, status));
+        }
+        return result;
     }
 
     @GetMapping("/report")
