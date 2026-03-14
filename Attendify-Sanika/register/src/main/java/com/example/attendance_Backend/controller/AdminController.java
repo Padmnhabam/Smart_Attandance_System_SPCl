@@ -139,4 +139,15 @@ public class AdminController {
         return result;
     }
 
+    @GetMapping("/profile")
+    public ResponseEntity<?> getAdminProfile() {
+        try {
+            com.example.attendance_Backend.model.Admin admin = adminService.getAdminProfile();
+            admin.setPassword(null);
+            return ResponseEntity.ok(admin);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("message", e.getMessage()));
+        }
+    }
+
 }

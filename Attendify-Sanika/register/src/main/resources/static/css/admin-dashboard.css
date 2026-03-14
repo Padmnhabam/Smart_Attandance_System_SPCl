@@ -103,6 +103,32 @@ body {
     color: #a0b8cc;
 }
 
+.org-code-box {
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.org-code-box small {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.org-code-box span {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: white;
+}
+
 .nav-menu {
     padding: 20px 15px;
 }

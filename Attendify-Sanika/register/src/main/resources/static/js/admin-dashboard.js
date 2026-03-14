@@ -575,12 +575,57 @@ function exportToCSV() {
     document.body.removeChild(link);
 }
 
-// =========================
 // Logout
 function logout() {
-    localStorage.removeItem('adminAuthToken'); localStorage.removeItem('adminLoggedUser'); localStorage.removeItem('adminRole'); localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
-    // use local path to avoid duplicating /public when already under /public
+    localStorage.removeItem('adminAuthToken');
+    localStorage.removeItem('adminLoggedUser');
+    localStorage.removeItem('adminRole');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('loggedUser');
+    localStorage.removeItem('role');
     window.location.href = 'login.html';
+}
+
+// =========================
+// Initialization
+// =========================
+document.addEventListener('DOMContentLoaded', () => {
+    const role = (localStorage.getItem('adminRole') || localStorage.getItem('role'));
+    const token = (localStorage.getItem('adminAuthToken') || localStorage.getItem('authToken'));
+
+    if (role !== "admin" || !token) {
+        window.location.href = "login.html";
+        return;
+    }
+
+    showSection('dashboard');
+    loadAttendanceOverview();
+    loadClassAttendanceChart();
+    loadTrendChart();
+    loadSubjectChart();
+    loadLowAttendanceAlerts();
+    fetchAdminProfile();
+});
+
+async function fetchAdminProfile() {
+    try {
+        const res = await fetch('/api/admin/profile');
+        if (!res.ok) throw new Error('Failed to fetch admin profile');
+        const admin = await res.json();
+
+        // Update sidebar info
+        if (document.getElementById('adminName')) document.getElementById('adminName').innerText = admin.name || 'Admin Director';
+        if (document.getElementById('adminEmail')) document.getElementById('adminEmail').innerText = admin.email;
+        if (document.getElementById('orgCodeDisplay')) document.getElementById('orgCodeDisplay').innerText = admin.schoolCode || '------';
+
+        // Update avatar if name exists
+        if (admin.name && document.querySelector('.admin-avatar')) {
+            const initials = admin.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+            document.querySelector('.admin-avatar').innerText = initials;
+        }
+    } catch (err) {
+        console.error('Profile fetch error:', err);
+    }
 }
 
 // ==========================================================

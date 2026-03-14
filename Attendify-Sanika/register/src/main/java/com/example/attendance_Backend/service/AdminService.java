@@ -116,4 +116,13 @@ public class AdminService {
         }
         return userRepo.findAll(PageRequest.of(0, limit, Sort.by("id").descending())).getContent();
     }
+
+    public com.example.attendance_Backend.model.Admin getAdminProfile() {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId == null) {
+            throw new RuntimeException("Unauthorized: No admin context found");
+        }
+        return adminRepo.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("Admin not found"));
+    }
 }
