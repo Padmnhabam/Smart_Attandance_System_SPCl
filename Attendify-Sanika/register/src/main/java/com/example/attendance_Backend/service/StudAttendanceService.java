@@ -164,4 +164,36 @@ public class StudAttendanceService {
             return true;
         }).orElse(false);
     }
+
+    // ===========================
+    // New Methods for v2 APIs
+    // ===========================
+
+    public List<com.example.attendance_Backend.model.Attendance> getAllAttendance() {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId != null) {
+            return repository.findAllWithDetails(adminId);
+        }
+        return repository.findAllWithDetails();
+    }
+
+    public com.example.attendance_Backend.model.Attendance getAttendanceByID(Long attendanceID) {
+        return repository.findById(attendanceID.intValue()).orElse(null);
+    }
+
+    public List<com.example.attendance_Backend.model.Attendance> getAttendanceByStudentID(Long studentID) {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId != null) {
+            return repository.findAll().stream()
+                    .limit(1000)
+                    .collect(java.util.stream.Collectors.toList());
+        }
+        return repository.findAll().stream()
+                .limit(1000)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    public com.example.attendance_Backend.model.Attendance saveAttendance(com.example.attendance_Backend.model.Attendance attendance) {
+        return repository.save(attendance);
+    }
 }
