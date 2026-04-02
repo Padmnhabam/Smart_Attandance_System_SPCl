@@ -1,8 +1,10 @@
 package com.example.attendance_Backend.service;
 
 import com.example.attendance_Backend.dto.*;
+import com.example.attendance_Backend.model.Teacher;
 import com.example.attendance_Backend.model.User;
 import com.example.attendance_Backend.repository.AttendanceRepository;
+import com.example.attendance_Backend.repository.TeacherRepository;
 import com.example.attendance_Backend.security.AdminContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -16,13 +18,16 @@ public class TeacherReportService {
     private final AttendanceRepository attendanceRepository;
     private final com.example.attendance_Backend.repository.ClassSubjectRepository classSubjectRepository;
     private final com.example.attendance_Backend.repository.UserRepository userRepository;
+    private final TeacherRepository teacherRepository;
 
     public TeacherReportService(AttendanceRepository attendanceRepository,
             com.example.attendance_Backend.repository.ClassSubjectRepository classSubjectRepository,
-            com.example.attendance_Backend.repository.UserRepository userRepository) {
+            com.example.attendance_Backend.repository.UserRepository userRepository,
+            TeacherRepository teacherRepository) {
         this.attendanceRepository = attendanceRepository;
         this.classSubjectRepository = classSubjectRepository;
         this.userRepository = userRepository;
+        this.teacherRepository = teacherRepository;
     }
 
     // =====================
@@ -52,9 +57,10 @@ public class TeacherReportService {
      * filter
      */
     public List<Map<String, Object>> getStudentsForTeacher(int teacherId, Integer classId, Integer divisionId) {
-        Long adminId = AdminContextHolder.getAdminId();
-        if (adminId == null)
+        Long adminId = resolveAdminId(teacherId);
+        if (adminId == null) {
             return Collections.emptyList();
+        }
 
         List<User> users;
         if (classId != null || divisionId != null) {
@@ -62,6 +68,10 @@ public class TeacherReportService {
         } else {
             users = attendanceRepository.getStudentsForTeacher(teacherId, adminId);
         }
+
+        users = users.stream()
+                .filter(this::isStudentLikeUser)
+                .collect(Collectors.toList());
 
         return users.stream().map(u -> {
             Map<String, Object> m = new HashMap<>();
@@ -71,6 +81,30 @@ public class TeacherReportService {
             m.put("className", u.getClassMaster() != null ? u.getClassMaster().getClassName() : null);
             return m;
         }).collect(Collectors.toList());
+    }
+
+    private Long resolveAdminId(int teacherId) {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId != null) {
+            return adminId;
+        }
+
+        Optional<Teacher> teacher = teacherRepository.findById(teacherId);
+        if (teacher.isPresent() && teacher.get().getAdmin() != null) {
+            return teacher.get().getAdmin().getId();
+        }
+        return null;
+    }
+
+    private boolean isStudentLikeUser(User user) {
+        if (user == null) {
+            return false;
+        }
+        String role = user.getRole();
+        if (role == null) {
+            return user.getRollNo() != null && !user.getRollNo().isBlank();
+        }
+        return "STUDENT".equalsIgnoreCase(role) || "USER".equalsIgnoreCase(role);
     }
 
     /** Student's subject-wise breakdown (teacher viewing a specific student) */

@@ -114,6 +114,25 @@ body {
     color: transparent;
 }
 
+.mobile-menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid #dbe3ea;
+    background: #ffffff;
+    color: #2c3e50;
+    font-size: 1.4rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.sidebar-overlay {
+    display: none;
+}
+
 /* ===== SECTION STYLES ===== */
 .section {
     animation: fadeIn 0.5s ease;
@@ -652,55 +671,94 @@ tbody td {
 
 @media (max-width: 768px) {
     .layout {
-        flex-direction: column;
+        display: block;
     }
-    
+
     .sidebar {
-        width: 100%;
+        width: min(84vw, 320px);
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
         padding: 20px 0;
+        z-index: 1200;
+        transform: translateX(-105%);
+        transition: transform 0.25s ease;
     }
-    
+
+    .sidebar.sidebar-open {
+        transform: translateX(0);
+    }
+
     .sidebar h2 {
         margin-bottom: 20px;
-        justify-content: center;
-    }
-    
-    .sidebar ul {
-        display: flex;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 10px;
+        justify-content: flex-start;
         padding: 0 20px;
     }
-    
+
+    .sidebar ul {
+        display: block;
+        padding: 0 10px 20px;
+        overflow-y: auto;
+        max-height: calc(100vh - 120px);
+    }
+
     .sidebar li {
-        margin: 0;
-        padding: 12px 20px;
-        font-size: 0.9rem;
+        margin: 6px 10px;
+        padding: 12px 14px;
+        font-size: 0.95rem;
     }
-    
+
+    .mobile-menu-btn {
+        display: inline-flex;
+    }
+
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease;
+        z-index: 1100;
+    }
+
+    .sidebar-overlay.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    body.menu-open {
+        overflow: hidden;
+    }
+
     .main {
-        padding: 20px;
+        padding: 16px;
     }
-    
+
     .cards {
         grid-template-columns: 1fr;
         gap: 20px;
     }
-    
+
     .topbar {
-        padding: 20px;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
+        padding: 16px;
+        gap: 12px;
+        justify-content: flex-start;
+        align-items: center;
     }
-    
+
+    .topbar h1 {
+        font-size: 1.2rem;
+    }
+
     .table-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 15px;
     }
-    
+
     .profile-info {
         grid-template-columns: 1fr;
         padding: 40px 20px 20px;
@@ -712,15 +770,15 @@ tbody td {
         font-size: 0.85rem;
         padding: 10px 15px;
     }
-    
+
     .card p {
         font-size: 2.2rem;
     }
-    
+
     .stat-value {
         font-size: 2rem;
     }
-    
+
     .table-filters {
         width: 100%;
         justify-content: center;
@@ -735,6 +793,10 @@ tbody td {
     .pagination {
         width: 100%;
         justify-content: center;
+    }
+
+    .main {
+        padding: 12px;
     }
 }
 
@@ -1050,4 +1112,29 @@ tbody td {
 .status-pending {
   color: #ffc107;
   font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  #leaveReqSection {
+    padding: 18px 14px;
+    margin: 12px 0;
+    max-width: 100%;
+  }
+
+  #leaveReqSection h2 {
+    font-size: 18px;
+  }
+
+  #leaveReqSection .leave-form {
+    max-width: 100%;
+  }
+
+  #leaveReqSection button {
+    width: 100%;
+  }
+
+  #leaveTable th,
+  #leaveTable td {
+    white-space: nowrap;
+  }
 }

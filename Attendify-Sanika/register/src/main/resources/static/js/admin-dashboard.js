@@ -40,6 +40,37 @@ function showSection(section) {
 
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelector(`.nav-link[onclick="showSection('${section}')"]`)?.classList.add('active');
+    closeAdminSidebar();
+}
+
+function closeAdminSidebar() {
+    const sidebar = document.getElementById('adminSidebar');
+    const overlay = document.getElementById('adminSidebarOverlay');
+    if (!sidebar || !overlay) return;
+    sidebar.classList.remove('sidebar-open');
+    overlay.classList.remove('show');
+    document.body.classList.remove('menu-open');
+}
+
+function setupAdminMobileSidebar() {
+    const toggleBtn = document.getElementById('adminMenuToggle');
+    const sidebar = document.getElementById('adminSidebar');
+    const overlay = document.getElementById('adminSidebarOverlay');
+    if (!toggleBtn || !sidebar || !overlay) return;
+
+    toggleBtn.addEventListener('click', () => {
+        const shouldOpen = !sidebar.classList.contains('sidebar-open');
+        sidebar.classList.toggle('sidebar-open', shouldOpen);
+        overlay.classList.toggle('show', shouldOpen);
+        document.body.classList.toggle('menu-open', shouldOpen);
+    });
+
+    overlay.addEventListener('click', closeAdminSidebar);
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 900) {
+            closeAdminSidebar();
+        }
+    });
 }
 
 // =========================
@@ -1067,6 +1098,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     showSection('dashboard');
+    setupAdminMobileSidebar();
     loadAttendanceOverview();
     loadClassAttendanceChart();
     loadTrendChart();

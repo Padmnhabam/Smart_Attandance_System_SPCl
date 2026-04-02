@@ -275,7 +275,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 SELECT DISTINCT u
                 FROM User u
                 WHERE u.admin.id = :adminId
-                AND u.role = 'STUDENT'
+                AND (u.role IS NULL OR UPPER(u.role) IN ('STUDENT', 'USER'))
                 AND (:classId IS NULL OR u.classMaster.id = :classId)
                 AND (:divisionId IS NULL OR u.divisionMaster.id = :divisionId)
                 ORDER BY u.name
@@ -295,7 +295,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 FROM User u
                 LEFT JOIN Attendance a ON a.user = u
                 WHERE u.admin.id = :adminId
-                AND u.role = 'STUDENT'
+                AND (u.role IS NULL OR UPPER(u.role) IN ('STUDENT', 'USER'))
                 AND (
                     EXISTS (
                         SELECT 1 FROM Attendance att
@@ -467,7 +467,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                     AND a.admin.id = :adminId
                 WHERE u.classMaster.id = :classId
                 AND u.divisionMaster.id = :divisionId
-                AND u.role = 'STUDENT'
+                AND (u.role IS NULL OR UPPER(u.role) IN ('STUDENT', 'USER'))
                 AND u.admin.id = :adminId
                 GROUP BY u.id, u.rollNo, u.name, a.subjectMaster.subjectName
                 ORDER BY u.rollNo ASC

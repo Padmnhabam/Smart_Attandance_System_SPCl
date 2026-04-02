@@ -2438,6 +2438,11 @@ async function loadTeacherStudentList() {
 
         const picker = document.getElementById('studentPickerSelect');
         picker.innerHTML = '<option value="">-- Select Student --</option>';
+        if (!students.length) {
+            document.getElementById('studentFilterRow').style.display = 'none';
+            document.getElementById('studentListStatus').textContent = 'No students found for the selected filters.';
+            return;
+        }
         students.forEach(s => {
             picker.innerHTML += `<option value="${s.id}">${s.name} (${s.rollNo || s.id})</option>`;
         });

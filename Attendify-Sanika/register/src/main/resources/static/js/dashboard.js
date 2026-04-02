@@ -170,6 +170,37 @@ function showSection(id) {
         sec.classList.add("hidden")
     );
     document.getElementById(id).classList.remove("hidden");
+    closeStudentSidebar();
+}
+
+function closeStudentSidebar() {
+    const sidebar = document.getElementById("studentSidebar");
+    const overlay = document.getElementById("studentSidebarOverlay");
+    if (!sidebar || !overlay) return;
+    sidebar.classList.remove("sidebar-open");
+    overlay.classList.remove("show");
+    document.body.classList.remove("menu-open");
+}
+
+function setupStudentMobileSidebar() {
+    const toggleBtn = document.getElementById("studentMenuToggle");
+    const sidebar = document.getElementById("studentSidebar");
+    const overlay = document.getElementById("studentSidebarOverlay");
+    if (!toggleBtn || !sidebar || !overlay) return;
+
+    toggleBtn.addEventListener("click", () => {
+        const shouldOpen = !sidebar.classList.contains("sidebar-open");
+        sidebar.classList.toggle("sidebar-open", shouldOpen);
+        overlay.classList.toggle("show", shouldOpen);
+        document.body.classList.toggle("menu-open", shouldOpen);
+    });
+
+    overlay.addEventListener("click", closeStudentSidebar);
+    window.addEventListener("resize", () => {
+        if (window.innerWidth > 768) {
+            closeStudentSidebar();
+        }
+    });
 }
 
 // ----------------- LOGOUT -----------------
@@ -354,6 +385,7 @@ document.addEventListener("DOMContentLoaded", function () {
     checkAttendanceStatus();
     loadStudentLeaves();
     loadClassTeachers();
+    setupStudentMobileSidebar();
 
     // ----------------- PROFILE SETUP LOGIC -----------------
     // Check if profile is setup (using both user object and current UI values as safety)

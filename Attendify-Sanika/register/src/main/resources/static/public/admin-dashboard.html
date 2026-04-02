@@ -16,9 +16,10 @@
 </head>
 
 <body>
+    <div class="sidebar-overlay" id="adminSidebarOverlay"></div>
     <div class="admin-container">
         <!-- Sidebar -->
-        <div class="sidebar">
+        <div class="sidebar" id="adminSidebar">
             <div class="sidebar-header">
                 <div class="logo"><i class="fas fa-qrcode"></i> <span>Attendify <span>Admin</span></span></div>
             </div>
@@ -76,6 +77,9 @@
         <!-- Main Content -->
         <div class="main-content">
             <div class="top-bar">
+                <button class="mobile-menu-btn" id="adminMenuToggle" type="button" aria-label="Open menu">
+                    ☰
+                </button>
                 <div class="page-title">
                     <h2 id="pageTitle">Dashboard Overview</h2>
                     <p id="pageSubtitle">Track teachers & students in real-time</p>

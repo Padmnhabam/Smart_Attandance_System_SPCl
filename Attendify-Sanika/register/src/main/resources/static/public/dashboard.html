@@ -538,10 +538,12 @@
 </div> -->
 
 
+    <div class="sidebar-overlay" id="studentSidebarOverlay"></div>
+
     <div class="layout">
 
         <!-- Sidebar (same structure) -->
-        <div class="sidebar">
+        <div class="sidebar" id="studentSidebar">
             <h2>🎓 Student Panel</h2>
             <ul>
                 <li onclick="showSection('home')">🏠 Dashboard</li>
@@ -556,6 +558,9 @@
         <!-- Main Content -->
         <div class="main">
             <div class="topbar">
+                <button class="mobile-menu-btn" id="studentMenuToggle" type="button" aria-label="Open menu">
+                    ☰
+                </button>
                 <h1 id="welcomeText">Welcome</h1>
             </div>
 
