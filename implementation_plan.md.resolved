@@ -1,0 +1,251 @@
+# Teacher Assignment & Reporting System
+
+## Goal
+
+Build a teacher-centric assignment system where a teacher can teach **multiple subjects** across **multiple classes**, **divisions**, and **classrooms** — with full attendance reporting for both **teacher** and **admin** panels.
+
+## Current State
+
+| What Exists | Problem |
+|---|---|
+| `attendance.subject` is `varchar` | No relational link to teacher |
+| `attendance_session` has `class_name`, `division` | No `teacher_id` FK |
+| [attendance](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/repository/AttendanceRepository.java#36-46) has no `teacher_id` | Can't filter attendance by teacher |
+| No `teacher_assignments` table | Can't define what a teacher teaches |
+
+---
+
+## Proposed Changes
+
+### Database Layer
+
+#### [NEW] `teacher_assignments` table
+
+Links a teacher to their class + subject + division + room. This is the **core** of the system.
+
+```sql
+CREATE TABLE teacher_assignments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    teacher_id INT NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    class_name VARCHAR(100) NOT NULL,
+    division VARCHAR(10),
+    room_number VARCHAR(50),
+    FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+);
+```
+
+#### [MODIFY] [attendance](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/repository/AttendanceRepository.java#36-46) table — add `teacher_id`
+
+```sql
+ALTER TABLE attendance
+ADD COLUMN teacher_id INT,
+ADD FOREIGN KEY (teacher_id) REFERENCES teachers(id);
+```
+
+#### [MODIFY] `attendance_session` table — add `teacher_id`
+
+```sql
+ALTER TABLE attendance_session
+ADD COLUMN teacher_id INT,
+ADD FOREIGN KEY (teacher_id) REFERENCES teachers(id);
+```
+
+---
+
+### JPA Entity Layer
+
+#### [NEW] [TeacherAssignment.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/model/TeacherAssignment.java)
+
+New entity mapping the `teacher_assignments` table with `@ManyToOne` to [Teacher](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/model/Teacher.java#6-100).
+
+#### [MODIFY] [Attendance.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/model/Attendance.java)
+
+Add `@ManyToOne Teacher teacher` field.
+
+#### [MODIFY] [AttendanceSession.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/model/AttendanceSession.java)
+
+Add `@ManyToOne Teacher teacher` field.
+
+#### [MODIFY] [Teacher.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/model/Teacher.java)
+
+Add `@OneToMany List<TeacherAssignment> assignments`.
+
+---
+
+### Repository Layer
+
+#### [NEW] [TeacherAssignmentRepository.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/repository/TeacherAssignmentRepository.java)
+
+```java
+List<TeacherAssignment> findByTeacherId(int teacherId);
+List<TeacherAssignment> findBySubject(String subject);
+List<TeacherAssignment> findByClassName(String className);
+```
+
+#### [MODIFY] [AttendanceRepository.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/repository/AttendanceRepository.java)
+
+Add new teacher-specific queries:
+
+| Query | Purpose |
+|---|---|
+| `findByTeacherId(int)` | All attendance for a teacher |
+| `getTeacherSubjectAnalytics(int)` | Per-subject breakdown for a teacher |
+| `getTeacherClassAnalytics(int)` | Per-class breakdown for a teacher |
+| `getTeacherDateAnalytics(int, from, to)` | Date-range filtered for a teacher |
+| `getTeacherDivisionAnalytics(int, className)` | Per-division breakdown |
+
+---
+
+### Service Layer
+
+#### [NEW] [TeacherAssignmentService.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/service/TeacherAssignmentService.java)
+
+- `createAssignment(teacherId, subject, className, division, room)`
+- `getAssignmentsForTeacher(teacherId)`
+- `deleteAssignment(assignmentId)`
+- `updateAssignment(assignmentId, ...)`
+
+#### [NEW] [TeacherReportService.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/service/TeacherReportService.java)
+
+- `getTeacherDashboardSummary(teacherId)` — total classes, total present, total absent
+- `getAttendanceBySubject(teacherId, subject)`
+- `getAttendanceByClass(teacherId, className)`
+- `getAttendanceByDateRange(teacherId, from, to)`
+- `getAttendanceByDivision(teacherId, className, division)`
+- `getLowAttendanceStudents(teacherId, thresholdPct)`
+
+---
+
+### Controller Layer (New APIs)
+
+#### [NEW] [TeacherAssignmentController.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/TeacherAssignmentController.java)
+
+| Method | Endpoint | Who Uses |
+|---|---|---|
+| POST | `/api/teacher-assignments` | Admin |
+| GET | `/api/teacher-assignments/teacher/{teacherId}` | Teacher / Admin |
+| DELETE | `/api/teacher-assignments/{id}` | Admin |
+| PUT | `/api/teacher-assignments/{id}` | Admin |
+
+#### [NEW] [TeacherReportController.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/TeacherReportController.java)
+
+| Method | Endpoint | Who Uses |
+|---|---|---|
+| GET | `/api/reports/teacher/{teacherId}/summary` | Teacher |
+| GET | `/api/reports/teacher/{teacherId}/by-subject?subject=` | Teacher |
+| GET | `/api/reports/teacher/{teacherId}/by-class?className=` | Teacher |
+| GET | `/api/reports/teacher/{teacherId}/by-date?from=&to=` | Teacher |
+| GET | `/api/reports/teacher/{teacherId}/by-division?className=&division=` | Teacher |
+| GET | `/api/reports/teacher/{teacherId}/low-attendance?threshold=75` | Teacher |
+
+#### [NEW] [AdminReportController.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/AdminReportController.java)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/admin/reports/all-teachers` | All teachers with their assignments |
+| GET | `/api/admin/reports/teacher/{teacherId}` | One teacher's full report |
+| GET | `/api/admin/reports/by-class?className=` | All attendance for a class |
+| GET | `/api/admin/reports/by-subject?subject=` | All attendance for a subject |
+| GET | `/api/admin/reports/low-attendance?threshold=75` | Students below threshold |
+
+---
+
+### DTOs
+
+#### [NEW] TeacherAssignmentDTO
+```java
+{ teacherId, teacherName, subject, className, division, roomNumber }
+```
+
+#### [NEW] TeacherSummaryDTO
+```java
+{ teacherId, teacherName, totalClasses, totalPresent, totalAbsent, attendancePct }
+```
+
+#### [NEW] TeacherSubjectReportDTO
+```java
+{ subject, className, division, totalStudents, presentCount, absentCount, pct }
+```
+
+---
+
+### MODIFY Existing Flows
+
+#### [MODIFY] [AttendanceController.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/AttendanceController.java)
+
+- [markAttendance()](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/AttendanceController.java#53-121) — also set `attendance.setTeacher(session.getTeacher())`
+- [finalizeAttendance()](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/controller/AttendanceController.java#136-163) — also set `attendance.setTeacher(...)` on absent records
+
+#### [MODIFY] [SecurityConfig.java](file:///d:/A/Attendify-Sanika/Attendify-Sanika/register/src/main/java/com/example/attendance_Backend/config/SecurityConfig.java)
+
+- Permit new report endpoints for authenticated users
+
+---
+
+## How It All Connects
+
+```mermaid
+erDiagram
+    TEACHERS ||--o{ TEACHER_ASSIGNMENTS : "teaches"
+    TEACHER_ASSIGNMENTS }o--|| TEACHERS : "assigned_to"
+    TEACHERS ||--o{ ATTENDANCE_SESSION : "creates"
+    TEACHERS ||--o{ ATTENDANCE : "recorded_by"
+    USERS ||--o{ ATTENDANCE : "marks"
+    ATTENDANCE_SESSION ||--o{ ATTENDANCE : "via_session"
+
+    TEACHERS {
+        int id PK
+        string name
+        string email UK
+        string department
+    }
+    TEACHER_ASSIGNMENTS {
+        int id PK
+        int teacher_id FK
+        string subject
+        string class_name
+        string division
+        string room_number
+    }
+    ATTENDANCE {
+        int id PK
+        int user_id FK
+        int teacher_id FK
+        string subject
+        date date
+        string status
+    }
+    ATTENDANCE_SESSION {
+        string id PK
+        int teacher_id FK
+        string subject
+        string class_name
+        string division
+    }
+```
+
+## Teacher Flow Example
+
+> **Prof. Sharma** teaches Math to CSE-A, CSE-B, and Physics to MECH-A
+
+1. Admin creates 3 `teacher_assignments` for Prof. Sharma
+2. Prof. Sharma logs in → sees only CSE-A, CSE-B (Math), MECH-A (Physics)
+3. Creates QR session for "Math, CSE-A" → `attendance_session.teacher_id = Sharma.id`
+4. Students scan → `attendance.teacher_id = Sharma.id`
+5. Prof. Sharma opens reports → filters by subject/class/division/date
+6. Admin opens admin panel → sees Prof. Sharma's complete attendance stats
+
+## Verification Plan
+
+### Automated Tests
+1. `mvn spring-boot:run` — verify clean startup with new entities
+2. POST to `/api/teacher-assignments` — create assignment
+3. GET `/api/teacher-assignments/teacher/{id}` — verify assignments returned
+4. POST to `/api/attendance/mark` — verify `teacher_id` saved
+5. GET `/api/reports/teacher/{id}/summary` — verify summary stats
+6. GET `/api/admin/reports/all-teachers` — verify admin can see all teachers
+
+### Manual Verification
+- Login as teacher → verify filtered dashboard
+- Login as admin → verify admin can see teacher reports
