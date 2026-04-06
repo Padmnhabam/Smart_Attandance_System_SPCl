@@ -1,8 +1,13 @@
 {
 <<<<<<< HEAD
+<<<<<<< HEAD
     "java.compile.nullAnalysis.mode": "automatic",
     "java.dependency.packagePresentation": "hierarchical"
 =======
     "java.compile.nullAnalysis.mode": "automatic"
 >>>>>>> 5466506 (teacher profile updated)
+=======
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.dependency.packagePresentation": "hierarchical"
+>>>>>>> b038459 (teacher profile updated)
 }
