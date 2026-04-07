@@ -123,12 +123,21 @@ public class TeacherService {
         Teacher teacher = getTeacherById(id)
                 .orElseThrow(() -> new RuntimeException("Teacher not found"));
 
-        teacher.setName(teacherDetails.getName());
-        teacher.setDepartment(teacherDetails.getDepartment());
-        teacher.setEmail(teacherDetails.getEmail());
-        teacher.setMobilenumber(teacherDetails.getMobilenumber());
+        if (teacherDetails.getName() != null && !teacherDetails.getName().isBlank()) {
+            teacher.setName(teacherDetails.getName());
+        }
+        // Only update department if explicitly provided (not null)
+        if (teacherDetails.getDepartment() != null) {
+            teacher.setDepartment(teacherDetails.getDepartment());
+        }
+        if (teacherDetails.getEmail() != null && !teacherDetails.getEmail().isBlank()) {
+            teacher.setEmail(teacherDetails.getEmail());
+        }
+        if (teacherDetails.getMobilenumber() != null) {
+            teacher.setMobilenumber(teacherDetails.getMobilenumber());
+        }
         // allow admin to change role too if passed
-        if (teacherDetails.getRole() != null) {
+        if (teacherDetails.getRole() != null && !teacherDetails.getRole().isBlank()) {
             teacher.setRole(teacherDetails.getRole());
         }
         if (teacherDetails.getPassword() != null && !teacherDetails.getPassword().isBlank()) {
@@ -179,6 +188,22 @@ public class TeacherService {
             teacher.setDeviceId(deviceId);
             repository.save(teacher);
         });
+    }
+
+    public void updatePhotoUrl(Integer teacherId, String photoUrl) {
+        // Try admin-scoped lookup first; fall back to plain lookup (self-service)
+        Long adminId = AdminContextHolder.getAdminId();
+        Teacher teacher;
+        if (adminId != null) {
+            teacher = repository.findByIdAndAdminId(teacherId, adminId)
+                    .orElseGet(() -> repository.findById(teacherId).orElse(null));
+        } else {
+            teacher = repository.findById(teacherId).orElse(null);
+        }
+        if (teacher != null) {
+            teacher.setPhotoUrl(photoUrl);
+            repository.save(teacher);
+        }
     }
 
     /**

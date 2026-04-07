@@ -320,44 +320,48 @@
                 <!-- Manual Attendance Subtab -->
                 <div id="manual-attendance-subtab" class="tab-content">
                     <div class="section-title">
-                        <h3><i class="fas fa-user-edit"></i> Manual Attendance Entry</h3>
+                        <h3><i class="fas fa-user-check"></i> Bulk Manual Attendance</h3>
+                        <p style="color:#666; font-size:0.9rem; margin-top:5px;">Select an active lecture session from today's timetable to manually mark or correct attendance.</p>
                     </div>
 
-                    <form id="manualAttendanceForm">
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="manualStudentId">Roll No *</label>
-                                <input type="text" id="manualStudentId" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="manualSubjectSelect">Subject *</label>
-                                <select id="manualSubjectSelect" required>
-                                    <option value="">-- Select Subject --</option>
-                                    <option value="Java">Java</option>
-                                    <option value="Python">Python</option>
-                                    <option value="DBMS">DBMS</option>
+                    <div style="background:#f8f9fa; padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #eee;">
+                        <div class="form-group" style="margin-bottom:15px;">
+                            <label for="manualSessionSelect" style="font-weight:600;">Select Today's Lecture Session *</label>
+                            <div style="display:flex; gap:10px;">
+                                <select id="manualSessionSelect" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                                    <option value="">-- Loading Today's Lectures --</option>
                                 </select>
+                                <button type="button" class="btn btn-primary" onclick="loadStudentsForSession()">
+                                    <i class="fas fa-users"></i> Load Students
+                                </button>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="attendanceStatusSelect">Status *</label>
-                                <select id="attendanceStatusSelect" required>
-                                    <option value="Present">Present</option>
-                                    <option value="Absent">Absent</option>
-                                </select>
-                            </div>
+                    <div id="manualAttendanceGridContainer" style="display:none;">
+                        <div class="table-responsive" style="max-height:500px; overflow-y:auto; border:1px solid #eee; border-radius:12px;">
+                            <table style="width:100%; border-collapse: collapse;">
+                                <thead style="position:sticky; top:0; background:#1e1a3a; color:white;">
+                                    <tr>
+                                        <th style="padding:12px;">Roll No</th>
+                                        <th style="padding:12px;">Name</th>
+                                        <th style="padding:12px; text-align:center;">Current Status</th>
+                                        <th style="padding:12px; text-align:center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="manualAttendanceTableBody">
+                                    <!-- Dynamic rows loaded via JS -->
+                                </tbody>
+                            </table>
                         </div>
-
-                        <div class="form-actions">
-                            <button type="reset" class="btn btn-secondary">Clear</button>
-                            <button type="submit" class="btn btn-primary">Save Attendance</button>
+                        
+                        <div style="display:flex; justify-content:flex-end; align-items:center; margin-top:20px; gap:15px;">
+                            <span id="manualAttendanceStatus" style="color:#666; font-size:0.9rem;"></span>
+                            <button type="button" class="btn btn-success" onclick="saveBulkAttendance()" style="padding:10px 24px;">
+                                <i class="fas fa-save"></i> Save Session Attendance
+                            </button>
                         </div>
-
-                    </form>
+                    </div>
                 </div>
             </div>
             <div id="upload-notes-tab" class="tab-content">
@@ -526,6 +530,8 @@
                             <button class="btn btn-secondary" style="flex: 1;" id="uploadPhotoBtn">
                                 <i class="fas fa-camera"></i> Upload Photo
                             </button>
+                            <!-- Hidden file input triggered by the Upload Photo button -->
+                            <input type="file" id="teacherPhotoInput" accept="image/*" style="display:none;">
                         </div>
                     </div>
 

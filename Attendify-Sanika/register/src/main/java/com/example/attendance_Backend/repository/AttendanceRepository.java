@@ -32,6 +32,10 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     @Query("DELETE FROM Attendance a WHERE a.sessionId = :sessionId AND a.admin.id = :adminId")
     void deleteBySessionIdAndAdminId(@Param("sessionId") String sessionId, @Param("adminId") Long adminId);
 
+    @Query("SELECT a.user.rollNo FROM Attendance a WHERE a.sessionId = :sessionId AND LOWER(a.status) = 'present' AND a.admin.id = :adminId")
+    List<String> findPresentRollNosBySessionIdAndAdminId(@Param("sessionId") String sessionId, @Param("adminId") Long adminId);
+
+
     @Query("SELECT a FROM Attendance a JOIN FETCH a.user JOIN FETCH a.classMaster WHERE a.admin.id = :adminId")
     List<Attendance> findAllWithDetails(@Param("adminId") Long adminId);
 

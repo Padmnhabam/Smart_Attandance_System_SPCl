@@ -9,7 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.util.UUID;
 
 import com.example.attendance_Backend.model.Teacher;
 import com.example.attendance_Backend.service.TeacherService;
@@ -159,6 +164,45 @@ public class TeacherController {
         }
         service.saveDeviceId(id, deviceId);
         return ResponseEntity.ok("Device ID saved");
+    }
+
+    @PostMapping(value = "/{id}/photo", consumes = "multipart/form-data")
+    public ResponseEntity<?> uploadPhoto(
+            @PathVariable Integer id,
+            @RequestParam("photo") MultipartFile photo) {
+        try {
+            if (photo == null || photo.isEmpty()) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "No file selected"));
+            }
+
+            String contentType = photo.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "Only image files are allowed"));
+            }
+
+            String uploadDir = System.getProperty("user.dir") + File.separator + "uploads";
+            File directory = new File(uploadDir);
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+
+            String ext = "";
+            String originalName = photo.getOriginalFilename();
+            if (originalName != null && originalName.contains(".")) {
+                ext = originalName.substring(originalName.lastIndexOf("."));
+            }
+            String uniqueFileName = "teacher_" + id + "_" + UUID.randomUUID() + ext;
+            File dest = new File(uploadDir + File.separator + uniqueFileName);
+            photo.transferTo(dest);
+
+            String photoUrl = "/uploads/" + uniqueFileName;
+            service.updatePhotoUrl(id, photoUrl);
+
+            return ResponseEntity.ok(java.util.Map.of("photoUrl", photoUrl));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(new ApiResponse(false, "Photo upload failed: " + e.getMessage()));
+        }
     }
 
 }

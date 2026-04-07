@@ -43,6 +43,9 @@ public class Teacher {
     @Column(name = "device_id", length = 200)
     private String deviceId;
 
+    @Column(name = "photo_url", length = 500)
+    private String photoUrl;
+
     // Constructors
     @Transient
     private String schoolCode;
@@ -124,6 +127,14 @@ public class Teacher {
 
     public void setDeviceId(String deviceId) {
         this.deviceId = deviceId;
+    }
+
+    public String getPhotoUrl() {
+        return photoUrl;
+    }
+
+    public void setPhotoUrl(String photoUrl) {
+        this.photoUrl = photoUrl;
     }
 
     public Admin getAdmin() {

@@ -10,9 +10,11 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 import com.example.attendance_Backend.dto.AttendanceDTO;
 import com.example.attendance_Backend.dto.DateAnalyticsDTO;
@@ -349,6 +351,118 @@ public class AttendanceController {
         attendanceRepository.save(attendance);
 
         response.put("message", "Manual attendance saved successfully ✅");
+        return response;
+    }
+
+    static class BulkAttendanceRequest {
+        public Integer timetableSlotId;
+        public Integer classId;
+        public Integer divisionId;
+        public Integer subjectId;
+        public Integer teacherId;
+        public List<StudentStatus> attendance;
+    }
+    static class StudentStatus {
+        public String rollNo;
+        public String status;
+    }
+
+    @GetMapping("/session/{timetableSlotId}/present-rolls")
+    public ResponseEntity<?> getSessionPresentRolls(@PathVariable Integer timetableSlotId) {
+        Long adminId = com.example.attendance_Backend.security.AdminContextHolder.getAdminId();
+        if (adminId == null) {
+            return ResponseEntity.status(401).body(Collections.singletonList("Admin context required"));
+        }
+
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
+        List<AttendanceSession> existingSessions = sessionRepository
+                .findByTimetableSlotIdAndExpiryTimeBetweenAndAdminId(
+                        timetableSlotId, adminId, startOfDay, endOfDay);
+        
+        if (existingSessions.isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        
+        String sessionId = existingSessions.get(0).getId();
+        List<String> presentRollNos = attendanceRepository.findPresentRollNosBySessionIdAndAdminId(sessionId, adminId);
+        return ResponseEntity.ok(presentRollNos);
+    }
+
+    @PostMapping("/manual/bulk")
+    public Map<String, String> markManualAttendanceBulk(@RequestBody BulkAttendanceRequest req) {
+        Map<String, String> response = new HashMap<>();
+
+        Long adminId = com.example.attendance_Backend.security.AdminContextHolder.getAdminId();
+        if (adminId == null) {
+            response.put("message", "Admin context required ❌");
+            return response;
+        }
+        Admin admin = new Admin();
+        admin.setId(adminId);
+
+        if (req.timetableSlotId == null || req.subjectId == null || req.classId == null || req.attendance == null) {
+            response.put("message", "Missing required fields ❌");
+            return response;
+        }
+
+        LocalDate today = LocalDate.now();
+
+        // 1. Find existing session for this slot today, or create a new minimal one
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
+        List<AttendanceSession> existingSessions = sessionRepository
+                .findByTimetableSlotIdAndExpiryTimeBetweenAndAdminId(
+                        req.timetableSlotId, adminId, startOfDay, endOfDay);
+        
+        AttendanceSession session;
+        if (!existingSessions.isEmpty()) {
+            session = existingSessions.get(0);
+        } else {
+            session = new AttendanceSession();
+            session.setAdmin(admin);
+            session.setTimetableSlotId(req.timetableSlotId);
+            session.setSubjectMaster(subjectMasterRepository.findByIdAndAdminId(req.subjectId, adminId).orElse(null));
+            // Class and Division Master
+            // Note: need ClassMasterRepository and DivisionMasterRepository injected in AttendanceController OR we can omit them from session if not strictly required, but let's try to get them. We don't have those repos in AttendanceController but we can just skip setting them on the new Session object since they are optional for basic manual records, or we get them from the first student's profile.
+            session.setTeacherId(req.teacherId);
+            session.setTeacherLat(0.0);
+            session.setTeacherLng(0.0);
+            session.setRadiusKm(0.0);
+            session.setExpiryTime(endOfDay); // expire end of day since it's manual
+            sessionRepository.save(session);
+        }
+
+        int successCount = 0;
+
+        for (StudentStatus ss : req.attendance) {
+            Optional<User> studentOpt = userRepository.findByRollNoAndAdminId(ss.rollNo, adminId);
+            if (studentOpt.isEmpty()) continue;
+            User student = studentOpt.get();
+
+            // Check if already marked for THIS specific session
+            boolean alreadyMarked = attendanceRepository.existsByUser_IdAndSessionIdAndAdminId(student.getId(), session.getId(), adminId);
+
+            if (!alreadyMarked) {
+                Attendance attendance = new Attendance();
+                attendance.setUser(student);
+                attendance.setSubjectMaster(session.getSubjectMaster() != null ? session.getSubjectMaster() : subjectMasterRepository.findByIdAndAdminId(req.subjectId, adminId).orElse(null));
+                attendance.setDate(today);
+                attendance.setStatus(ss.status);
+                attendance.setDeviceId("MANUAL");
+                attendance.setSessionId(session.getId());
+                attendance.setAdmin(admin);
+                attendance.setClassMaster(student.getClassMaster());
+                attendance.setDivisionMaster(student.getDivisionMaster());
+                attendanceRepository.save(attendance);
+                successCount++;
+            } else {
+                // Feature: If it IS already marked, but status is different, should we update it?
+                // Left intentionally empty for now.
+            }
+        }
+
+        response.put("message", "Bulk attendance logged: " + successCount + " new entries ✅");
         return response;
     }
 

@@ -2822,11 +2822,13 @@ let selectedTimetableSlotId = null;
 async function loadTodayLectures() {
     const teacherId = getTeacherId();
     const select = document.getElementById('lectureSelect');
+    const manualSelect = document.getElementById('manualSessionSelect');
     const status = document.getElementById('lectureLoadStatus');
     if (!teacherId || !select) return;
 
     status.textContent = 'Loading today\'s lectures…';
     select.innerHTML = '<option value="">-- Select Today\'s Lecture --</option>';
+    if (manualSelect) manualSelect.innerHTML = '<option value="">-- Select Today\'s Lecture --</option>';
 
     try {
         const res = await fetch(`/api/teacher/timetable/${teacherId}/today`);
@@ -2852,6 +2854,11 @@ async function loadTodayLectures() {
             opt.dataset.divisionId = slot.divisionMaster ? slot.divisionMaster.id : '';
             opt.dataset.room = slot.roomNo || '';
             select.appendChild(opt);
+            
+            if (manualSelect) {
+                const mOpt = opt.cloneNode(true);
+                manualSelect.appendChild(mOpt);
+            }
         });
 
         status.textContent = `✅ ${lectureSlots.length} lecture(s) found for today.`;
@@ -3153,5 +3160,162 @@ async function downloadMonthlyExcel() {
     } catch (err) {
         console.error(err);
         statusEl.innerHTML = '<span style="color:#ef4444;">❌ Error generating Excel.</span>';
+    }
+}
+
+// =====================================================
+// MANUAL ATTENDANCE BULK ENTRY
+// =====================================================
+async function loadStudentsForSession() {
+    const select = document.getElementById('manualSessionSelect');
+    if (!select || !select.value) {
+        alert('Please select a lecture session first.');
+        return;
+    }
+    const opt = select.options[select.selectedIndex];
+    const classId = opt.dataset.classId;
+    const divisionId = opt.dataset.divisionId;
+    const timetableSlotId = select.value;
+
+    const tbody = document.getElementById('manualAttendanceTableBody');
+    const statusText = document.getElementById('manualAttendanceStatus');
+    
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading students...</td></tr>';
+    document.getElementById('manualAttendanceGridContainer').style.display = 'block';
+    statusText.textContent = '';
+
+    try {
+        const teacherId = getTeacherId();
+        // Fetch all students for this class/div
+        const studentsRes = await fetch(`/api/attendance/teacher/students?teacherId=${teacherId}&classId=${classId}&divisionId=${divisionId}`);
+        
+        let students = [];
+        if (studentsRes.ok) {
+           students = await studentsRes.json();
+        } else {
+           // Fallback to student-list and filter manually if the specific API is missing
+           const listRes = await fetch(`/api/attendance/teacher/student-list`);
+           if(listRes.ok) {
+                const allStudents = await listRes.json();
+                students = allStudents.filter(s => s.className === opt.dataset.className);
+           } else {
+               throw new Error('Fetch students failed');
+           }
+        }
+
+        tbody.innerHTML = '';
+        if (students.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#aaa;">No students found in this class.</td></tr>';
+            return;
+        }
+
+        // Check who is already marked present for this session
+        let presentRolls = [];
+        try {
+            const presentRes = await fetch(`/api/attendance/session/${timetableSlotId}/present-rolls`);
+            if (presentRes.ok) {
+                presentRolls = await presentRes.json();
+            }
+        } catch(e) { console.warn("Could not fetch existing session present rolls", e); }
+
+        students.forEach(s => {
+            const isPresent = presentRolls.includes(s.rollNo);
+            const badgeText = isPresent ? 'Present' : 'Absent';
+            const badgeBg = isPresent ? '#dcfce7' : '#fee2e2';
+            const badgeColor = isPresent ? '#22c55e' : '#ef4444';
+            const isChecked = isPresent ? 'checked' : '';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding:12px; border-bottom:1px solid #eee;">${s.rollNo}</td>
+                <td style="padding:12px; border-bottom:1px solid #eee;">${s.name}</td>
+                <td style="padding:12px; border-bottom:1px solid #eee; text-align:center;">
+                    <span class="status-badge" id="badge_${s.rollNo}" style="padding:4px 8px; border-radius:12px; font-size:0.8rem; background:${badgeBg}; color:${badgeColor};">${badgeText}</span>
+                </td>
+                <td style="padding:12px; border-bottom:1px solid #eee; text-align:center;">
+                    <label class="switch" style="position:relative; display:inline-block; width:44px; height:24px;">
+                        <input type="checkbox" onchange="toggleManualRow(this, '${s.rollNo}')" data-roll="${s.rollNo}" style="opacity:0; width:0; height:0;" ${isChecked}>
+                        <span class="slider round" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:.4s; border-radius:24px;"></span>
+                        <style>
+                            input:checked + .slider { background-color: #22c55e; }
+                            input:checked + .slider:before { transform: translateX(20px); }
+                            .slider:Before { position:absolute; content:""; height:16px; width:16px; left:4px; bottom:4px; background-color:white; transition:.4s; border-radius:50%; }
+                        </style>
+                    </label>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+    } catch (err) {
+        console.error('Error loading session students:', err);
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Failed to load students.</td></tr>';
+    }
+}
+
+function toggleManualRow(checkbox, rollNo) {
+    const badge = document.getElementById(`badge_${rollNo}`);
+    if (checkbox.checked) {
+        badge.textContent = 'Present';
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#22c55e';
+    } else {
+        badge.textContent = 'Absent';
+        badge.style.background = '#fee2e2';
+        badge.style.color = '#ef4444';
+    }
+}
+
+async function saveBulkAttendance() {
+    const select = document.getElementById('manualSessionSelect');
+    if (!select || !select.value) return;
+
+    const opt = select.options[select.selectedIndex];
+    const teacherId = getTeacherId();
+    
+    // Payload definition based on AttendanceController.BulkAttendanceRequest
+    const payload = {
+        timetableSlotId: parseInt(select.value),
+        classId: parseInt(opt.dataset.classId),
+        divisionId: opt.dataset.divisionId ? parseInt(opt.dataset.divisionId) : null,
+        subjectId: opt.dataset.subjectId ? parseInt(opt.dataset.subjectId) : null,
+        teacherId: parseInt(teacherId),
+        attendance: []
+    };
+
+    const checkboxes = document.querySelectorAll('#manualAttendanceTableBody input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        payload.attendance.push({
+            rollNo: cb.dataset.roll,
+            status: cb.checked ? 'Present' : 'Absent'
+        });
+    });
+
+    if (payload.attendance.length === 0) {
+        alert('No students to save.');
+        return;
+    }
+
+    const statusText = document.getElementById('manualAttendanceStatus');
+    statusText.textContent = 'Saving...';
+
+    try {
+        const res = await fetch('/api/attendance/manual/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error('Save failed');
+        const data = await res.json();
+        
+        statusText.style.color = '#22c55e';
+        statusText.textContent = data.message || 'Saved successfully ✅';
+        setTimeout(() => { statusText.textContent = ''; }, 3000);
+        
+    } catch (err) {
+        console.error('Failed to save manual bulk:', err);
+        statusText.style.color = '#ef4444';
+        statusText.textContent = '❌ Error saving attendance.';
     }
 }
