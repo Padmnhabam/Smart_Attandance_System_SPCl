@@ -181,10 +181,13 @@
                             <span class="timer" id="qrTimer">15:00</span>
                         </div>
                     </div>
-                    <div class="qr-actions">
-                        <!-- <button onclick="finalizeAttendance()">
-        Finalize Attendance
-    </button> -->
+                    <div class="qr-actions" style="margin-top: 15px; text-align: center;">
+                        <button class="btn btn-secondary" onclick="shareQrCode()" style="margin-right: 10px;">
+                            <i class="fas fa-share-nodes"></i> Share QR
+                        </button>
+                        <button class="btn btn-secondary" onclick="copyQrLink()">
+                            <i class="fas fa-copy"></i> Copy Link
+                        </button>
                     </div>
 
                     <div class="qr-info">

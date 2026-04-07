@@ -3319,3 +3319,47 @@ async function saveBulkAttendance() {
         statusText.textContent = '❌ Error saving attendance.';
     }
 }
+
+// =====================================================
+// QR SHARING FUNCTIONS
+// =====================================================
+async function shareQrCode() {
+    const qrImg = document.getElementById('qrImage');
+    if (!qrImg || !qrImg.src || qrImg.src.includes('SampleQRData')) {
+        alert("Please generate a QR code first!");
+        return;
+    }
+
+    const shareData = {
+        title: 'Attendance QR Code',
+        text: 'Please scan this QR code to mark your attendance.',
+        url: qrImg.src
+    };
+
+    if (navigator.share) {
+        try {
+            await navigator.share(shareData);
+            console.log('QR Code shared successfully');
+        } catch (err) {
+            console.error('Error sharing QR code:', err);
+        }
+    } else {
+        alert("Sharing is not supported on this browser. Use the Copy Link button instead.");
+    }
+}
+
+function copyQrLink() {
+    const qrImg = document.getElementById('qrImage');
+    if (!qrImg || !qrImg.src || qrImg.src.includes('SampleQRData')) {
+        alert("Please generate a QR code first!");
+        return;
+    }
+
+    navigator.clipboard.writeText(qrImg.src).then(() => {
+        alert("QR Code URL copied to clipboard! You can paste and share it.");
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+        alert("Failed to copy QR code link.");
+    });
+}
+
