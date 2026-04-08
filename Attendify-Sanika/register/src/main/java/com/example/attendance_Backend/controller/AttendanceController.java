@@ -105,31 +105,36 @@ public class AttendanceController {
             return response;
         }
         LocalDate today = LocalDate.now();
-        // ✅ Check if student already marked for THIS specific session
-        boolean alreadyMarked = attendanceRepository.existsByUser_IdAndSessionIdAndAdminId(user.getId(), sessionId,
-                adminId);
-        if (alreadyMarked) {
+        // ✅ Check if there's a pre-generated row (or existing row)
+        Attendance attendance = attendanceRepository
+                .findByUser_IdAndSessionIdAndAdminId(user.getId(), sessionId, adminId).orElse(null);
+
+        if (attendance != null && "Present".equalsIgnoreCase(attendance.getStatus())) {
             response.put("message", "Attendance already marked for this session");
             return response;
         }
+
         // 🔒 Block same device for THIS specific session (proxy prevention)
         boolean deviceUsed = attendanceRepository.existsByDeviceIdAndSessionIdAndAdminId(deviceId, sessionId, adminId);
         if (deviceUsed) {
             response.put("message", "Attendance already marked from this device ❌");
             return response;
         }
-        Attendance attendance = new Attendance();
-        attendance.setUser(user);
-        attendance.setSubjectMaster(session.getSubjectMaster());
-        attendance.setDate(today);
+
+        if (attendance == null) {
+            // Unmapped student scanning the QR code
+            attendance = new Attendance();
+            attendance.setUser(user);
+            attendance.setSubjectMaster(session.getSubjectMaster());
+            attendance.setDate(today);
+            attendance.setSessionId(sessionId);
+            attendance.setAdmin(admin);
+            attendance.setClassMaster(session.getClassMaster());
+            attendance.setDivisionMaster(session.getDivisionMaster());
+        }
+
         attendance.setStatus("Present");
         attendance.setDeviceId(deviceId);
-        attendance.setSessionId(sessionId);
-        attendance.setAdmin(admin);
-
-        // Use the class and division from the actual Attendance Session
-        attendance.setClassMaster(session.getClassMaster());
-        attendance.setDivisionMaster(session.getDivisionMaster());
 
         attendanceRepository.save(attendance);
         response.put("message", "Attendance marked successfully ✅");
@@ -247,11 +252,11 @@ public class AttendanceController {
         List<StudentAttendanceDTO> result = new ArrayList<>();
         for (Object[] row : rows) {
             int id = row[0] instanceof Number ? ((Number) row[0]).intValue() : 0;
-            String rollNo    = row[1] != null ? row[1].toString() : "";
-            String name      = row[2] != null ? row[2].toString() : "";
+            String rollNo = row[1] != null ? row[1].toString() : "";
+            String name = row[2] != null ? row[2].toString() : "";
             String className = row[3] != null ? row[3].toString() : "-";
-            String subject   = row[4] != null ? row[4].toString() : "-";
-            String status    = row[5] != null ? row[5].toString() : "Absent";
+            String subject = row[4] != null ? row[4].toString() : "-";
+            String status = row[5] != null ? row[5].toString() : "Absent";
             result.add(new StudentAttendanceDTO(id, rollNo, name, className, subject, status));
         }
         return result;
@@ -267,18 +272,27 @@ public class AttendanceController {
     }
 
     @GetMapping("/analytics/subject")
-    public List<SubjectAnalyticsDTO> getSubjectAnalytics() {
-        return teacherService.getSubjectAnalytics();
+    public List<SubjectAnalyticsDTO> getSubjectAnalytics(
+            @RequestParam(required = false) Integer classId,
+            @RequestParam(required = false) Integer divisionId,
+            @RequestParam(required = false) Integer subjectId) {
+        return teacherService.getSubjectAnalytics(classId, divisionId, subjectId);
     }
 
     @GetMapping("/analytics/department")
-    public List<SubjectAnalyticsDTO> departmentAnalytics() {
-        return teacherService.getDepartmentAnalytics();
+    public List<SubjectAnalyticsDTO> departmentAnalytics(
+            @RequestParam(required = false) Integer classId,
+            @RequestParam(required = false) Integer divisionId,
+            @RequestParam(required = false) Integer subjectId) {
+        return teacherService.getDepartmentAnalytics(classId, divisionId, subjectId);
     }
 
     @GetMapping("/analytics/date")
-    public List<DateAnalyticsDTO> dateAnalytics() {
-        return teacherService.getDateAnalytics();
+    public List<DateAnalyticsDTO> dateAnalytics(
+            @RequestParam(required = false) Integer classId,
+            @RequestParam(required = false) Integer divisionId,
+            @RequestParam(required = false) Integer subjectId) {
+        return teacherService.getDateAnalytics(classId, divisionId, subjectId);
     }
 
     @GetMapping("/check/{id}")
@@ -362,6 +376,7 @@ public class AttendanceController {
         public Integer teacherId;
         public List<StudentStatus> attendance;
     }
+
     static class StudentStatus {
         public String rollNo;
         public String status;
@@ -379,11 +394,11 @@ public class AttendanceController {
         List<AttendanceSession> existingSessions = sessionRepository
                 .findByTimetableSlotIdAndExpiryTimeBetweenAndAdminId(
                         timetableSlotId, adminId, startOfDay, endOfDay);
-        
+
         if (existingSessions.isEmpty()) {
             return ResponseEntity.ok(Collections.emptyList());
         }
-        
+
         String sessionId = existingSessions.get(0).getId();
         List<String> presentRollNos = attendanceRepository.findPresentRollNosBySessionIdAndAdminId(sessionId, adminId);
         return ResponseEntity.ok(presentRollNos);
@@ -414,7 +429,7 @@ public class AttendanceController {
         List<AttendanceSession> existingSessions = sessionRepository
                 .findByTimetableSlotIdAndExpiryTimeBetweenAndAdminId(
                         req.timetableSlotId, adminId, startOfDay, endOfDay);
-        
+
         AttendanceSession session;
         if (!existingSessions.isEmpty()) {
             session = existingSessions.get(0);
@@ -424,7 +439,12 @@ public class AttendanceController {
             session.setTimetableSlotId(req.timetableSlotId);
             session.setSubjectMaster(subjectMasterRepository.findByIdAndAdminId(req.subjectId, adminId).orElse(null));
             // Class and Division Master
-            // Note: need ClassMasterRepository and DivisionMasterRepository injected in AttendanceController OR we can omit them from session if not strictly required, but let's try to get them. We don't have those repos in AttendanceController but we can just skip setting them on the new Session object since they are optional for basic manual records, or we get them from the first student's profile.
+            // Note: need ClassMasterRepository and DivisionMasterRepository injected in
+            // AttendanceController OR we can omit them from session if not strictly
+            // required, but let's try to get them. We don't have those repos in
+            // AttendanceController but we can just skip setting them on the new Session
+            // object since they are optional for basic manual records, or we get them from
+            // the first student's profile.
             session.setTeacherId(req.teacherId);
             session.setTeacherLat(0.0);
             session.setTeacherLng(0.0);
@@ -437,16 +457,25 @@ public class AttendanceController {
 
         for (StudentStatus ss : req.attendance) {
             Optional<User> studentOpt = userRepository.findByRollNoAndAdminId(ss.rollNo, adminId);
-            if (studentOpt.isEmpty()) continue;
+            if (studentOpt.isEmpty())
+                continue;
             User student = studentOpt.get();
 
-            // Check if already marked for THIS specific session
-            boolean alreadyMarked = attendanceRepository.existsByUser_IdAndSessionIdAndAdminId(student.getId(), session.getId(), adminId);
+            Attendance attendance = attendanceRepository
+                    .findByUser_IdAndSessionIdAndAdminId(student.getId(), session.getId(), adminId).orElse(null);
 
-            if (!alreadyMarked) {
-                Attendance attendance = new Attendance();
+            if (attendance != null) {
+                // If it exists, ALWAYS sync its status to the teacher's bulk grid selection
+                attendance.setStatus(ss.status);
+                attendance.setDeviceId("MANUAL");
+                attendanceRepository.save(attendance);
+                successCount++;
+            } else {
+                // If it doesn't exist (e.g. unassigned student), create the row natively
+                attendance = new Attendance();
                 attendance.setUser(student);
-                attendance.setSubjectMaster(session.getSubjectMaster() != null ? session.getSubjectMaster() : subjectMasterRepository.findByIdAndAdminId(req.subjectId, adminId).orElse(null));
+                attendance.setSubjectMaster(session.getSubjectMaster() != null ? session.getSubjectMaster()
+                        : subjectMasterRepository.findByIdAndAdminId(req.subjectId, adminId).orElse(null));
                 attendance.setDate(today);
                 attendance.setStatus(ss.status);
                 attendance.setDeviceId("MANUAL");
@@ -456,9 +485,6 @@ public class AttendanceController {
                 attendance.setDivisionMaster(student.getDivisionMaster());
                 attendanceRepository.save(attendance);
                 successCount++;
-            } else {
-                // Feature: If it IS already marked, but status is different, should we update it?
-                // Left intentionally empty for now.
             }
         }
 

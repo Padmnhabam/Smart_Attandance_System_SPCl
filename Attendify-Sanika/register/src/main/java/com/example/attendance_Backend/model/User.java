@@ -7,7 +7,10 @@ import jakarta.persistence.*;
 import java.util.List;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_user_admin_role_class_div", columnList = "admin_id, role, class_id, division_id"),
+        @Index(name = "idx_user_admin_roll", columnList = "admin_id, roll_no")
+})
 public class User {
 
     @Id

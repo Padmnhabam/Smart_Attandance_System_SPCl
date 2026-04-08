@@ -10,7 +10,10 @@ import org.springframework.stereotype.Service;
 
 import com.example.attendance_Backend.model.Admin;
 import com.example.attendance_Backend.security.AdminContextHolder;
-import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import java.util.List;
 import java.util.Optional;
 
@@ -75,25 +78,36 @@ public class TeacherService {
         return repository.findByEmail(email);
     }
 
-    public List<SubjectAnalyticsDTO> getSubjectAnalytics() {
-        Long adminId = com.example.attendance_Backend.security.AdminContextHolder.getAdminId();
+    public List<SubjectAnalyticsDTO> getSubjectAnalytics(Integer classId, Integer divisionId, Integer subjectId) {
+        Long adminId = AdminContextHolder.getAdminId();
+        Integer teacherId = getOptionalTeacherId();
         if (adminId != null)
-            return attendanceRepository.getSubjectAnalyticsByAdminId(adminId);
+            return attendanceRepository.getSubjectAnalyticsByAdminId(adminId, classId, divisionId, subjectId, teacherId);
         return java.util.Collections.emptyList();
     }
 
-    public List<SubjectAnalyticsDTO> getDepartmentAnalytics() {
-        Long adminId = com.example.attendance_Backend.security.AdminContextHolder.getAdminId();
+    public List<SubjectAnalyticsDTO> getDepartmentAnalytics(Integer classId, Integer divisionId, Integer subjectId) {
+        Long adminId = AdminContextHolder.getAdminId();
+        Integer teacherId = getOptionalTeacherId();
         if (adminId != null)
-            return attendanceRepository.getDepartmentAnalyticsByAdminId(adminId);
+            return attendanceRepository.getDepartmentAnalyticsByAdminId(adminId, classId, divisionId, subjectId, teacherId);
         return java.util.Collections.emptyList();
     }
 
-    public List<DateAnalyticsDTO> getDateAnalytics() {
-        Long adminId = com.example.attendance_Backend.security.AdminContextHolder.getAdminId();
+    public List<DateAnalyticsDTO> getDateAnalytics(Integer classId, Integer divisionId, Integer subjectId) {
+        Long adminId = AdminContextHolder.getAdminId();
+        Integer teacherId = getOptionalTeacherId();
         if (adminId != null)
-            return attendanceRepository.getDateAnalyticsByAdminId(adminId);
+            return attendanceRepository.getDateAnalyticsByAdminId(adminId, classId, divisionId, subjectId, teacherId);
         return java.util.Collections.emptyList();
+    }
+
+    private Integer getOptionalTeacherId() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_teacher") || a.getAuthority().equals("ROLE_TEACHER"))) {
+            return repository.findByEmail(auth.getName()).map(Teacher::getId).orElse(null);
+        }
+        return null;
     }
 
     // -------------------------
@@ -106,7 +120,11 @@ public class TeacherService {
         if (adminId != null) {
             return repository.findByAdminId(adminId);
         }
-        return repository.findAll();
+        return repository.findAll(PageRequest.of(0, 1000, Sort.by("id").descending())).getContent();
+    }
+
+    public Page<Teacher> searchTeachersForAdmin(Long adminId, Integer departmentId, String q, Pageable pageable) {
+        return repository.searchTeachersForAdmin(adminId, departmentId, q, pageable);
     }
 
     // Get teacher by ID

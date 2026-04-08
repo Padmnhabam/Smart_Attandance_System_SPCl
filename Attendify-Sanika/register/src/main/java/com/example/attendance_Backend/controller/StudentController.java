@@ -4,9 +4,12 @@ import com.example.attendance_Backend.dto.*;
 import com.example.attendance_Backend.model.User;
 import com.example.attendance_Backend.service.StudAttendanceService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/student")
@@ -40,8 +43,22 @@ public class StudentController {
 
     // GET all students
     @GetMapping
-    public List<User> getAllStudents() {
-        return service.getAllStudents();
+    public List<User> getAllStudents(@RequestParam(defaultValue = "500") int limit) {
+        return service.getAllStudents(limit);
+    }
+
+    @GetMapping(params = { "page", "size" })
+    public Map<String, Object> getAllStudentsPaged(@RequestParam int page, @RequestParam int size) {
+        Page<User> usersPage = service.getAllStudentsPaged(page, size);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", usersPage.getContent());
+        response.put("page", usersPage.getNumber());
+        response.put("size", usersPage.getSize());
+        response.put("totalElements", usersPage.getTotalElements());
+        response.put("totalPages", usersPage.getTotalPages());
+        response.put("isFirst", usersPage.isFirst());
+        response.put("isLast", usersPage.isLast());
+        return response;
     }
 
     // GET student by rollNo

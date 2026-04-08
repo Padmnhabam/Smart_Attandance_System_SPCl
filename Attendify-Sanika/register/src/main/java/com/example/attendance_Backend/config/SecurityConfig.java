@@ -53,8 +53,11 @@ public class SecurityConfig {
                                 "/api/users/register",
                                 "/api/users/forgot-password",
                                 "/api/attendance/mark",
+                                "/actuator/health",
+                                "/actuator/info",
                                 "/error")
                         .permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/master/**").hasAnyRole("USER", "TEACHER", "ADMIN")
                         .requestMatchers("/api/teacher/**").hasAnyRole("TEACHER", "ADMIN")

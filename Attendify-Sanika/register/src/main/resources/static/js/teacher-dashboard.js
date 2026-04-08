@@ -24,6 +24,57 @@ const tabContents = document.querySelectorAll('.tab-content');
 const pageTitle = document.getElementById('pageTitle');
 let attendanceChart = null;
 let teacherDeviceId = null;
+let teacherSubjectChartInstance = null;
+let teacherTrendChartInstance = null;
+let teacherDoughnutInstance = null; // Fix for "Error loading report" crash
+const TEACHER_STUDENT_PAGE_SIZE = 50;
+let _teacherStudentSearchDebounce = null;
+let _teacherStudentState = {
+    page: 0,
+    size: TEACHER_STUDENT_PAGE_SIZE,
+    totalPages: 0,
+    totalElements: 0,
+    content: [],
+    rowByRoll: new Map(),
+    filtersInitialized: false
+};
+
+// =========================
+// Chart Helpers & Integrity
+// =========================
+function getTeacherChartTooltipConfig() {
+    return {
+        callbacks: {
+            label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                const dataObj = context.chart.data.datasets[context.datasetIndex].allData?.[context.dataIndex];
+                if (dataObj && dataObj.total !== undefined) {
+                    const val = context.parsed.x !== undefined ? context.parsed.x : context.parsed.y;
+                    return `${label}${val}% (${dataObj.present}/${dataObj.total} students)`;
+                }
+                return label + (context.parsed.x !== undefined ? context.parsed.x : context.parsed.y) + '%';
+            }
+        }
+    };
+}
+
+function checkTeacherEmptyChart(data, canvasId, message = "No data available for these filters") {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return false;
+    const ctx = canvas.getContext('2d');
+    if (!data || data.length === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px Poppins';
+        ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+        return true;
+    }
+    return false;
+}
+
 
 document.addEventListener("DOMContentLoaded", function () {
     setupUploadNotes();
@@ -31,6 +82,7 @@ document.addEventListener("DOMContentLoaded", function () {
     loadNotesFilters(); // Add this line
     // fingerprint for teacher device
     loadTeacherDeviceId();
+    initTeacherAnalyticsFilters();
 });
 
 function loadTeacherDeviceId() {
@@ -1086,6 +1138,8 @@ async function loadTeacherSubjectsInStudentTab() {
 
         if (!classDropdown || !divisionDropdown || !subjectDropdown) return;
 
+        if (_teacherStudentState.filtersInitialized) return;
+
         // Clear existing
         classDropdown.innerHTML = `<option value="">All Classes</option>`;
         divisionDropdown.innerHTML = `<option value="">All Divisions</option>`;
@@ -1104,7 +1158,10 @@ async function loadTeacherSubjectsInStudentTab() {
             divisionDropdown.innerHTML = `<option value="">All Divisions</option>`;
             subjectDropdown.innerHTML = `<option value="">All Subjects</option>`;
 
-            if (!classId) return;
+            if (!classId) {
+                loadStudentsForSelectedClass();
+                return;
+            }
 
             // Load divisions for class
             const divsRes = await fetch(`/api/master/classes/${classId}/divisions`);
@@ -1119,7 +1176,13 @@ async function loadTeacherSubjectsInStudentTab() {
             subs.forEach(s => {
                 subjectDropdown.innerHTML += `<option value="${s.id}">${s.subjectName}</option>`;
             });
+
+            loadStudentsForSelectedClass();
         };
+
+        divisionDropdown.onchange = () => loadStudentsForSelectedClass();
+        subjectDropdown.onchange = () => loadStudentsForSelectedClass();
+        _teacherStudentState.filtersInitialized = true;
 
     } catch (err) {
         console.error("Error populating filters:", err);
@@ -1134,121 +1197,159 @@ async function loadTeacherSubjectsInStudentTab() {
 
 function loadStudentsContent() {
     loadTeacherSubjectsInStudentTab();
-    fetch("/api/attendance/teacher/student-list")
-        .then(res => res.json())
-        .then(data => {
-
-            // ✅ SORT BY ROLL NUMBER (Ascending)
-            data.sort((a, b) => parseInt(a.rollNo) - parseInt(b.rollNo));
-
-
-            const tbody = document.getElementById("studentTableBody");
-            tbody.innerHTML = "";
-
-            data.forEach(s => {
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${s.rollNo}</td>
-                        <td>${s.name}</td>
-                        <td>${s.className}</td>
-                        <td>${s.subject}</td>
-                        <td>${s.status || "-"}</td>
-                        <td class="action-icons">
-                            <i class="fas fa-eye view-icon" onclick="viewStudent('${s.rollNo}')" title="View"></i>
-    <i class="fas fa-pen edit-icon" onclick="editStudent('${s.rollNo}')" title="Edit"></i>
-    <i class="fas fa-trash delete-icon" onclick="deleteStudent(${s.id})" title="Delete"></i>
-                        </td>
-                    </tr>
-                `;
-            });
-        })
-        .catch(err => {
-            console.error("Error loading students:", err);
-        });
+    fetchTeacherStudentPage(0);
 }
 
 
 function loadStudentsForSelectedClass() {
+    fetchTeacherStudentPage(0);
+}
+
+function getTeacherStudentQueryParams(pageNo = 0) {
+    const params = new URLSearchParams();
+    params.set("page", String(Math.max(pageNo, 0)));
+    params.set("size", String(_teacherStudentState.size));
+
     const classId = document.getElementById("filterClass")?.value;
     const divisionId = document.getElementById("filterDivision")?.value;
     const subjectId = document.getElementById("filterSubject")?.value;
+    const q = (document.getElementById("teacherStudentSearch")?.value || "").trim();
 
-    let url = "/api/attendance/teacher/student-list";
-    const params = new URLSearchParams();
+    if (classId) params.set("classId", classId);
+    if (divisionId) params.set("divisionId", divisionId);
+    if (subjectId) params.set("subjectId", subjectId);
+    if (q) params.set("q", q);
+    return params;
+}
 
-    if (classId) params.append("classId", classId);
-    if (divisionId) params.append("divisionId", divisionId);
-    if (subjectId) params.append("subjectId", subjectId);
+function renderTeacherStudentRows(rows) {
+    const tbody = document.getElementById("studentTableBody");
+    if (!tbody) return;
 
-    if (params.toString()) {
-        url += "?" + params.toString();
+    if (!rows.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align:center;">
+                    No students found
+                </td>
+            </tr>
+        `;
+        return;
     }
 
-    fetch(url)
-        .then(res => res.json())
-        .then(data => {
+    tbody.innerHTML = rows.map(s => `
+        <tr>
+            <td>${s.rollNo}</td>
+            <td>${s.name}</td>
+            <td>${s.className}</td>
+            <td>${s.subject}</td>
+            <td>${s.status || "-"}</td>
+            <td class="action-icons">
+                <i class="fas fa-eye view-icon" onclick="viewStudent('${s.rollNo}')" title="View"></i>
+                <i class="fas fa-pen edit-icon" onclick="editStudent('${s.rollNo}')" title="Edit"></i>
+                <i class="fas fa-trash delete-icon" onclick="deleteStudent(${s.id})" title="Delete"></i>
+            </td>
+        </tr>
+    `).join("");
+}
 
-            data.sort((a, b) => parseInt(a.rollNo) - parseInt(b.rollNo));
+function updateTeacherStudentPager() {
+    const countEl = document.getElementById("teacherStudentCount");
+    const pageInfo = document.getElementById("teacherStudentPageInfo");
+    const prevBtn = document.getElementById("teacherStudentPrevBtn");
+    const nextBtn = document.getElementById("teacherStudentNextBtn");
 
-            const tbody = document.getElementById("studentTableBody");
-            tbody.innerHTML = "";
+    if (!countEl || !pageInfo || !prevBtn || !nextBtn) return;
 
-            if (data.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" style="text-align:center;">
-                            No students found
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
+    const { page, size, totalPages, totalElements, content } = _teacherStudentState;
+    if (totalElements === 0) {
+        countEl.textContent = "0 of 0";
+        pageInfo.textContent = "Page 0 of 0";
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+    }
 
-            data.forEach(s => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${s.rollNo}</td>
-                        <td>${s.name}</td>
-                        <td>${s.className}</td>
-                        <td>${s.subject}</td>
-                        <td>${s.status || "-"}</td>
-                        <td class="action-icons">
-                            <i class="fas fa-eye view-icon" onclick="viewStudent('${s.rollNo}')"></i>
-                            <i class="fas fa-pen edit-icon" onclick="editStudent('${s.rollNo}')"></i>
-                            <i class="fas fa-trash delete-icon" onclick="deleteStudent(${s.id})"></i>
-                        </td>
-                    </tr>
-                `;
-            });
+    const start = page * size + 1;
+    const end = Math.min(page * size + content.length, totalElements);
+    countEl.textContent = `${start}-${end} of ${totalElements}`;
+    pageInfo.textContent = `Page ${page + 1} of ${Math.max(totalPages, 1)}`;
+    prevBtn.disabled = page <= 0;
+    nextBtn.disabled = page >= totalPages - 1;
+}
 
-        })
-        .catch(err => {
-            console.error("Filter error:", err);
-            alert("Error loading students");
-        });
+async function fetchTeacherStudentPage(pageNo = 0) {
+    const tbody = document.getElementById("studentTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading students...</td></tr>`;
+
+    try {
+        const params = getTeacherStudentQueryParams(pageNo);
+        const res = await fetch(`/api/attendance/teacher/student-list?${params.toString()}`);
+        if (!res.ok) throw new Error(`Failed with status ${res.status}`);
+        const payload = await res.json();
+
+        let rows;
+        if (Array.isArray(payload)) {
+            rows = payload;
+            _teacherStudentState.page = 0;
+            _teacherStudentState.size = rows.length || TEACHER_STUDENT_PAGE_SIZE;
+            _teacherStudentState.totalElements = rows.length;
+            _teacherStudentState.totalPages = rows.length > 0 ? 1 : 0;
+        } else {
+            rows = Array.isArray(payload.content) ? payload.content : [];
+            _teacherStudentState.page = payload.page ?? 0;
+            _teacherStudentState.size = payload.size ?? TEACHER_STUDENT_PAGE_SIZE;
+            _teacherStudentState.totalElements = payload.totalElements ?? 0;
+            _teacherStudentState.totalPages = payload.totalPages ?? 0;
+        }
+
+        rows.sort((a, b) => String(a.rollNo || "").localeCompare(String(b.rollNo || ""), undefined, { numeric: true }));
+        _teacherStudentState.content = rows;
+        _teacherStudentState.rowByRoll = new Map(rows.map(r => [String(r.rollNo), r]));
+
+        renderTeacherStudentRows(rows);
+        updateTeacherStudentPager();
+    } catch (err) {
+        console.error("Error loading students:", err);
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#ef4444;">Error loading students.</td></tr>`;
+    }
+}
+
+function applyTeacherStudentFilters() {
+    clearTimeout(_teacherStudentSearchDebounce);
+    _teacherStudentSearchDebounce = setTimeout(() => fetchTeacherStudentPage(0), 300);
+}
+
+function changeTeacherStudentPage(delta) {
+    const nextPage = _teacherStudentState.page + delta;
+    if (nextPage < 0 || nextPage >= _teacherStudentState.totalPages) {
+        return;
+    }
+    fetchTeacherStudentPage(nextPage);
 }
 
 // ----------------- VIEW STUDENT -----------------
 function viewStudent(rollNo) {
-    fetch("/api/attendance/teacher/student-list")
-        .then(res => res.json())
-        .then(data => {
-            const student = data.find(s => s.rollNo == rollNo);
-            if (!student) return alert("Student not found");
+    const student = _teacherStudentState.rowByRoll.get(String(rollNo));
+    if (!student) return alert("Student not found in current page");
 
-            const fields = ["RollNo", "Name", "Class", "Subject", "Status"];
-            fields.forEach(field => {
-                const el = document.getElementById(`modal${field}`);
-                if (el) {
-                    el.textContent = student[field.toLowerCase()] || "-";
-                }
-            });
+    const mapping = {
+        modalRollNo: student.rollNo,
+        modalName: student.name,
+        modalClass: student.className,
+        modalSubject: student.subject,
+        modalStatus: student.status
+    };
+    Object.entries(mapping).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = value || "-";
+        }
+    });
 
-            const viewModal = document.getElementById("viewModal");
-            if (viewModal) viewModal.style.display = "block";
-        })
-        .catch(err => console.error("View error:", err));
+    const viewModal = document.getElementById("viewModal");
+    if (viewModal) viewModal.style.display = "block";
 }
 
 function closeModal() {
@@ -1260,30 +1361,25 @@ function closeModal() {
 function editStudent(rollNo) {
     console.log("Edit clicked:", rollNo);
 
-    fetch("/api/attendance/teacher/student-list")
-        .then(res => res.json())
-        .then(data => {
-            const student = data.find(s => s.rollNo == rollNo);
-            if (!student) return alert("Student not found");
+    const student = _teacherStudentState.rowByRoll.get(String(rollNo));
+    if (!student) return alert("Student not found in current page");
 
-            const modalFields = [
-                ["editAttendanceId", student.id],
-                ["editRollNo", student.rollNo],
-                ["editName", student.name],
-                ["editClass", student.className],
-                ["editSubject", student.subject],
-                ["editStatus", student.status || "Present"]
-            ];
+    const modalFields = [
+        ["editAttendanceId", student.id],
+        ["editRollNo", student.rollNo],
+        ["editName", student.name],
+        ["editClass", student.className],
+        ["editSubject", student.subject],
+        ["editStatus", student.status || "Present"]
+    ];
 
-            modalFields.forEach(([id, value]) => {
-                const el = document.getElementById(id);
-                if (el) el.value = value || "";
-            });
+    modalFields.forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value || "";
+    });
 
-            const editModal = document.getElementById("editModal");
-            if (editModal) editModal.style.display = "block";
-        })
-        .catch(err => console.error("Edit error:", err));
+    const editModal = document.getElementById("editModal");
+    if (editModal) editModal.style.display = "block";
 }
 
 // ----------------- UPDATE STUDENT -----------------
@@ -1308,7 +1404,7 @@ function updateStudent() {
             alert(msg);
             const editModal = document.getElementById("editModal");
             if (editModal) editModal.style.display = "none";
-            loadStudentsContent();
+            fetchTeacherStudentPage(_teacherStudentState.page);
         })
         .catch(err => console.error("Update error:", err));
 }
@@ -1408,7 +1504,7 @@ function deleteStudent(id) {
         .then(res => res.text())
         .then(() => {
             alert("Student deleted successfully ✅");
-            loadStudentsContent();
+            fetchTeacherStudentPage(_teacherStudentState.page);
         })
         .catch(err => console.error("Delete error:", err));
 }
@@ -3362,4 +3458,284 @@ function copyQrLink() {
         alert("Failed to copy QR code link.");
     });
 }
+
+// =====================================================
+// TEACHER ANALYTICS & VISUAL REPORTS
+// =====================================================
+
+async function initTeacherAnalyticsFilters() {
+    const classSel = document.getElementById('teacherAnalyticsClass');
+    if (!classSel) return;
+    
+    try {
+        const res = await fetch('/api/master/classes');
+        const classes = await res.json();
+        classes.forEach(c => classSel.innerHTML += `<option value="${c.id}">${c.className}</option>`);
+    } catch (e) { console.error('Failed to load class filters', e); }
+
+    try {
+        const res = await fetch('/api/master/subjects');
+        const subjects = await res.json();
+        const subjSel = document.getElementById('teacherAnalyticsSub');
+        if (subjSel) {
+            subjects.forEach(s => subjSel.innerHTML += `<option value="${s.id}">${s.subjectName}</option>`);
+        }
+    } catch (e) { console.error('Failed to load subject filters', e); }
+}
+
+async function onTeacherAnalyticsClassChange() {
+    const classId = document.getElementById('teacherAnalyticsClass').value;
+    const divSel = document.getElementById('teacherAnalyticsDiv');
+    divSel.innerHTML = '<option value="">All Divisions</option>';
+    if (classId) {
+        try {
+            const res = await fetch(`/api/master/classes/${classId}/divisions`);
+            const divs = await res.json();
+            divs.forEach(d => divSel.innerHTML += `<option value="${d.id}">${d.divisionName}</option>`);
+        } catch (e) { console.error(e); }
+    }
+    refreshTeacherCharts();
+}
+
+function refreshTeacherCharts() {
+    loadTeacherSubjectChart();
+    loadTeacherTrendChart();
+}
+
+function getTeacherAnalyticsQueryParams() {
+    const classId = document.getElementById('teacherAnalyticsClass')?.value || '';
+    const divId = document.getElementById('teacherAnalyticsDiv')?.value || '';
+    const subId = document.getElementById('teacherAnalyticsSub')?.value || '';
+    let params = [];
+    if (classId) params.push(`classId=${classId}`);
+    if (divId) params.push(`divisionId=${divId}`);
+    if (subId) params.push(`subjectId=${subId}`);
+    return params.length > 0 ? '?' + params.join('&') : '';
+}
+
+async function loadTeacherSubjectChart() {
+    try {
+        const res = await fetch(`/api/attendance/analytics/subject${getTeacherAnalyticsQueryParams()}`);
+        if (!res.ok) return;
+        let data = await res.json();
+
+        if (checkTeacherEmptyChart(data, 'teacherSubjectChart')) {
+            if (teacherSubjectChartInstance) teacherSubjectChartInstance.destroy();
+            return;
+        }
+
+        // INTEGRITY: Sort by percentage Descending
+        data.sort((a, b) => {
+            const pctA = a.total > 0 ? (a.present / a.total) : 0;
+            const pctB = b.total > 0 ? (b.present / b.total) : 0;
+            return pctB - pctA;
+        });
+
+        const ctx = document.getElementById('teacherSubjectChart');
+        if (!ctx) return;
+        if (teacherSubjectChartInstance) teacherSubjectChartInstance.destroy();
+
+        const labels = data.map(d => d.subject || 'N/A');
+        const presents = data.map(d => d.total > 0 ? Math.round((d.present / d.total) * 100) : 0);
+        const colors = presents.map(p => p >= 75 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444');
+
+        teacherSubjectChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ 
+                    label: 'Presence %', 
+                    data: presents, 
+                    backgroundColor: colors, 
+                    borderRadius: 6,
+                    allData: data
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: getTeacherChartTooltipConfig()
+                },
+                scales: {
+                    x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    } catch (err) { console.error('Teacher subject chart error', err); }
+}
+
+async function loadTeacherTrendChart() {
+    try {
+        const res = await fetch(`/api/attendance/analytics/date${getTeacherAnalyticsQueryParams()}`);
+        if (!res.ok) return;
+        const raw = await res.json();
+        const ctx = document.getElementById('teacherTrendChart');
+        if (!ctx) return;
+        if (teacherTrendChartInstance) teacherTrendChartInstance.destroy();
+
+        const data = raw.slice(-14);
+        const labels = data.map(d => {
+            const dt = new Date(d.date);
+            return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+        });
+        const percents = data.map(d => d.total > 0 ? Math.round((d.present / d.total) * 100) : 0);
+
+        teacherTrendChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Day-wise %',
+                    data: percents,
+                    fill: true,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16,185,129,0.12)',
+                    pointBackgroundColor: '#10b981',
+                    tension: 0.4,
+                    borderWidth: 2.5,
+                    allData: data
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const d = context.dataset.allData[context.dataIndex];
+                                const pct = d.total > 0 ? Math.round((d.present / d.total) * 100) : 0;
+                                return `Presence: ${pct}% (${d.present}/${d.total} students)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    } catch (err) { console.error('Teacher trend chart error', err); }
+}
+
+// Fixed missing reporting table functions
+async function loadTeacherSubjectReport() {
+    const status = document.getElementById('subjectReportStatus');
+    const tbody = document.getElementById('subjectReportBody');
+    const table = document.getElementById('subjectReportTable');
+    
+    if (status) status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+    try {
+        const res = await fetch('/api/attendance/analytics/subject');
+        if (!res.ok) throw new Error("Load failed");
+        const data = await res.json();
+        
+        if (tbody) {
+            tbody.innerHTML = '';
+            data.forEach(d => {
+                const pct = d.total > 0 ? Math.round((d.present / d.total) * 100) : 0;
+                const statusClass = pct >= 75 ? 'success' : pct >= 50 ? 'warning' : 'danger';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${d.subject}</td>
+                    <td>${d.present}</td>
+                    <td>${d.total}</td>
+                    <td>${pct}%</td>
+                    <td><span class="status-badge ${statusClass}">${pct >= 75 ? 'Good' : pct >= 50 ? 'Average' : 'Low'}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        if (table) table.style.display = 'table';
+        if (status) status.innerHTML = '✅ Updated';
+        
+        // Update the report chart too
+        loadTeacherSubjectReportChart(data);
+    } catch (e) {
+        if (status) status.innerHTML = '❌ Error loading report';
+        console.error(e);
+    }
+}
+
+async function loadTeacherClassReport() {
+    const status = document.getElementById('classReportStatus');
+    const tbody = document.getElementById('classReportBody');
+    const table = document.getElementById('classReportTable');
+    
+    if (status) status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+    try {
+        const res = await fetch('/api/attendance/analytics/department');
+        if (!res.ok) throw new Error("Load failed");
+        const data = await res.json();
+        
+        if (tbody) {
+            tbody.innerHTML = '';
+            data.forEach(d => {
+               const pct = d.total > 0 ? Math.round((d.present / d.total) * 100) : 0;
+               const tr = document.createElement('tr');
+               tr.innerHTML = `
+                    <td>${d.subject}</td> <!-- Repository uses 'subject' field for class name in department analytics -->
+                    <td>${d.present}</td>
+                    <td>${d.total}</td>
+                    <td>${pct}%</td>
+                    <td><span class="status-badge ${pct >= 75 ? 'success' : 'warning'}">${pct}%</span></td>
+               `;
+               tbody.appendChild(tr);
+            });
+        }
+        
+        if (table) table.style.display = 'table';
+        if (status) status.innerHTML = '✅ Updated';
+    } catch (e) {
+        if (status) status.innerHTML = '❌ Error';
+        console.error(e);
+    }
+}
+
+// Helper to keep old chart container working if needed
+function loadTeacherSubjectReportChart(data) {
+    const ctx = document.getElementById('subjectReportChart');
+    if (!ctx) return;
+    
+    // FIX: Destroy existing instance to prevent "Error loading report" crash
+    if (teacherDoughnutInstance) teacherDoughnutInstance.destroy();
+
+    teacherDoughnutInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.subject),
+            datasets: [{
+                data: data.map(d => d.present),
+                backgroundColor: data.map((_, i) => `hsl(${i * 137.508}, 70%, 50%)`)
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { 
+                title: { display: true, text: 'Presence Distribution (Student Counts)' },
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+// Helper to trigger initial loads when Visual Analytics sub-tab becomes active
+const originalSwitchReportTab = window.switchReportTab;
+window.switchReportTab = function(tabEl) {
+    if (typeof originalSwitchReportTab === 'function') {
+        originalSwitchReportTab(tabEl);
+    }
+    const targetId = tabEl.getAttribute('data-subtab');
+    if (targetId === 'visual-analytics-subtab') {
+        refreshTeacherCharts();
+    }
+};
 

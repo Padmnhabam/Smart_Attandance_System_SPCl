@@ -4,11 +4,14 @@ import com.example.attendance_Backend.dto.TeacherDTO;
 import com.example.attendance_Backend.model.*;
 import com.example.attendance_Backend.repository.*;
 import com.example.attendance_Backend.security.AdminContextHolder;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -38,14 +41,19 @@ public class MasterDataController {
     // ==========================================
     // 1. DEPARTMENT CRUD
     // ==========================================
+    @Cacheable(cacheNames = "master_departments", key = "#principal != null ? #principal.name : 'anon'")
     @GetMapping("/departments")
-    public ResponseEntity<List<Department>> getAllDepartments() {
+    public ResponseEntity<List<Department>> getAllDepartments(Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(departmentRepository.findByAdminId(adminId));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @PostMapping("/departments")
     public ResponseEntity<?> createDepartment(@RequestBody Department department) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -63,6 +71,10 @@ public class MasterDataController {
         return ResponseEntity.ok(departmentRepository.save(department));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @DeleteMapping("/departments/{id}")
     public ResponseEntity<?> deleteDepartment(@PathVariable int id) {
         if (!classMasterRepository.findByDepartmentId(id).isEmpty() ||
@@ -76,14 +88,19 @@ public class MasterDataController {
     // ==========================================
     // 2. CLASS MASTER CRUD
     // ==========================================
+    @Cacheable(cacheNames = "master_classes", key = "#principal != null ? #principal.name : 'anon'")
     @GetMapping("/classes")
-    public ResponseEntity<List<ClassMaster>> getAllClasses() {
+    public ResponseEntity<List<ClassMaster>> getAllClasses(Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(classMasterRepository.findByAdminId(adminId));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @PostMapping("/classes")
     public ResponseEntity<?> createClass(@RequestBody ClassMaster classMaster) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -101,6 +118,10 @@ public class MasterDataController {
         return ResponseEntity.ok(classMasterRepository.save(classMaster));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @DeleteMapping("/classes/{id}")
     public ResponseEntity<?> deleteClass(@PathVariable int id) {
         if (!divisionMasterRepository.findByClassMasterId(id).isEmpty() ||
@@ -111,16 +132,18 @@ public class MasterDataController {
         return ResponseEntity.ok("Deleted successfully.");
     }
 
+    @Cacheable(cacheNames = "master_class_divisions", key = "(#principal != null ? #principal.name : 'anon') + ':' + #id")
     @GetMapping("/classes/{id}/divisions")
-    public ResponseEntity<List<DivisionMaster>> getDivisionsByClass(@PathVariable int id) {
+    public ResponseEntity<List<DivisionMaster>> getDivisionsByClass(@PathVariable int id, Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(divisionMasterRepository.findByClassMasterIdAndAdminId(id, adminId));
     }
 
+    @Cacheable(cacheNames = "master_class_subjects", key = "(#principal != null ? #principal.name : 'anon') + ':' + #id")
     @GetMapping("/classes/{id}/subjects")
-    public ResponseEntity<List<SubjectMaster>> getSubjectsByClass(@PathVariable int id) {
+    public ResponseEntity<List<SubjectMaster>> getSubjectsByClass(@PathVariable int id, Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -134,14 +157,19 @@ public class MasterDataController {
     // ==========================================
     // 3. DIVISION MASTER CRUD
     // ==========================================
+    @Cacheable(cacheNames = "master_divisions", key = "#principal != null ? #principal.name : 'anon'")
     @GetMapping("/divisions")
-    public ResponseEntity<List<DivisionMaster>> getAllDivisions() {
+    public ResponseEntity<List<DivisionMaster>> getAllDivisions(Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(divisionMasterRepository.findByAdminId(adminId));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @PostMapping("/divisions")
     public ResponseEntity<?> createDivision(@RequestBody DivisionMaster divisionMaster) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -166,6 +194,10 @@ public class MasterDataController {
         return ResponseEntity.ok(divisionMasterRepository.save(divisionMaster));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @DeleteMapping("/divisions/{id}")
     public ResponseEntity<?> deleteDivision(@PathVariable int id) {
         if (userRepository.countByDivisionMaster_Id(id) > 0) {
@@ -188,14 +220,19 @@ public class MasterDataController {
     // ==========================================
     // 4. SUBJECT MASTER CRUD
     // ==========================================
+    @Cacheable(cacheNames = "master_subjects", key = "#principal != null ? #principal.name : 'anon'")
     @GetMapping("/subjects")
-    public ResponseEntity<List<SubjectMaster>> getAllSubjects() {
+    public ResponseEntity<List<SubjectMaster>> getAllSubjects(Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(subjectMasterRepository.findByAdminId(adminId));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @PostMapping("/subjects")
     public ResponseEntity<?> createSubject(@RequestBody SubjectMaster subjectMaster) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -213,6 +250,10 @@ public class MasterDataController {
         return ResponseEntity.ok(subjectMasterRepository.save(subjectMaster));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @DeleteMapping("/subjects/{id}")
     public ResponseEntity<?> deleteSubject(@PathVariable int id) {
         if (!classSubjectRepository.findBySubjectMasterId(id).isEmpty()) {
@@ -235,14 +276,19 @@ public class MasterDataController {
     // ==========================================
     // 5. CLASS-SUBJECT MAPPING CRUD
     // ==========================================
+    @Cacheable(cacheNames = "master_class_subject_mappings", key = "#principal != null ? #principal.name : 'anon'")
     @GetMapping("/class-subjects")
-    public List<ClassSubject> getAllClassSubjects() {
+    public List<ClassSubject> getAllClassSubjects(Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return java.util.Collections.emptyList();
         return classSubjectRepository.findByAdminId(adminId);
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @PostMapping("/class-subjects")
     public ResponseEntity<?> createClassSubjectMapping(@RequestBody ClassSubject classSubject) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -263,14 +309,22 @@ public class MasterDataController {
         return ResponseEntity.ok(classSubjectRepository.save(classSubject));
     }
 
+    @CacheEvict(cacheNames = {
+            "master_departments", "master_classes", "master_class_divisions", "master_class_subjects",
+            "master_divisions", "master_subjects", "master_class_subject_mappings", "master_class_division_teachers"
+    }, allEntries = true)
     @DeleteMapping("/class-subjects/{id}")
     public ResponseEntity<?> deleteClassSubjectMapping(@PathVariable int id) {
         classSubjectRepository.deleteById(id);
         return ResponseEntity.ok("Deleted successfully.");
     }
 
+    @Cacheable(cacheNames = "master_class_division_teachers", key = "(#principal != null ? #principal.name : 'anon') + ':' + #classId + ':' + #divisionId")
     @GetMapping("/classes/{classId}/divisions/{divisionId}/teachers")
-    public List<TeacherDTO> getTeachersByClassAndDivision(@PathVariable int classId, @PathVariable int divisionId) {
+    public List<TeacherDTO> getTeachersByClassAndDivision(
+            @PathVariable int classId,
+            @PathVariable int divisionId,
+            Principal principal) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return java.util.Collections.emptyList();

@@ -6,15 +6,22 @@ import com.example.attendance_Backend.model.User;
 import com.example.attendance_Backend.repository.AttendanceRepository;
 import com.example.attendance_Backend.repository.UserRepository;
 import com.example.attendance_Backend.repository.SubjectMasterRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.example.attendance_Backend.security.AdminContextHolder;
 import com.example.attendance_Backend.model.Admin;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Collections;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -34,11 +41,40 @@ public class TeacherStudentController {
 
     // ✅ Get All Students
     @GetMapping
-    public List<User> getAllStudents() {
+    public List<User> getAllStudents(@RequestParam(defaultValue = "500") int limit) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
             return Collections.emptyList();
-        return userRepository.findByAdminId(adminId);
+        int safeLimit = Math.min(Math.max(limit, 1), 2000);
+        return userRepository.findByAdminId(adminId, PageRequest.of(0, safeLimit, Sort.by("id").descending()));
+    }
+
+    @GetMapping(params = { "page", "size" })
+    public Map<String, Object> getAllStudentsPaged(@RequestParam int page, @RequestParam int size) {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId == null) {
+            return Collections.emptyMap();
+        }
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        Page<User> usersPage = userRepository.searchStudentsForAdmin(
+                adminId,
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(safePage, safeSize, Sort.by("id").descending()));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", usersPage.getContent());
+        response.put("page", usersPage.getNumber());
+        response.put("size", usersPage.getSize());
+        response.put("totalElements", usersPage.getTotalElements());
+        response.put("totalPages", usersPage.getTotalPages());
+        response.put("isFirst", usersPage.isFirst());
+        response.put("isLast", usersPage.isLast());
+        return response;
     }
 
     // ✅ View Single Student by ID
@@ -62,6 +98,12 @@ public class TeacherStudentController {
     }
 
     // ✅ Update Student Attendance by RollNo
+    @Caching(evict = {
+            @CacheEvict(cacheNames = {
+                    "analytics_subject", "analytics_department", "analytics_date", "analytics_monthly_report",
+                    "report_class_attendance", "report_low_attendance"
+            }, allEntries = true)
+    })
     @PutMapping("/teacher/update/{rollNo}")
     public ResponseEntity<?> updateStudent(
             @PathVariable String rollNo,
@@ -90,6 +132,12 @@ public class TeacherStudentController {
     }
 
     // ✅ Delete Student by ID
+    @Caching(evict = {
+            @CacheEvict(cacheNames = {
+                    "analytics_subject", "analytics_department", "analytics_date", "analytics_monthly_report",
+                    "report_class_attendance", "report_low_attendance"
+            }, allEntries = true)
+    })
     @DeleteMapping("/users/{id}")
     public ResponseEntity<String> deleteStudent(@PathVariable int id) {
         Long adminId = AdminContextHolder.getAdminId();
@@ -106,6 +154,12 @@ public class TeacherStudentController {
     }
 
     // ✅ Add New Student
+    @Caching(evict = {
+            @CacheEvict(cacheNames = {
+                    "analytics_subject", "analytics_department", "analytics_date", "analytics_monthly_report",
+                    "report_class_attendance", "report_low_attendance"
+            }, allEntries = true)
+    })
     @PostMapping("/add-student")
     public ResponseEntity<String> addStudent(@RequestBody User user) {
         Long adminId = AdminContextHolder.getAdminId();

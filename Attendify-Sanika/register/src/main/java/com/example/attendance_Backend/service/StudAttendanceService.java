@@ -7,6 +7,9 @@ import com.example.attendance_Backend.repository.AttendanceRepository;
 import com.example.attendance_Backend.repository.UserRepository;
 import com.example.attendance_Backend.security.AdminContextHolder;
 import com.example.attendance_Backend.model.Admin;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -98,11 +101,27 @@ public class StudAttendanceService {
 
     // Get all students
     public List<User> getAllStudents() {
+        return getAllStudents(500);
+    }
+
+    public List<User> getAllStudents(int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 2000);
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId != null) {
-            return userRepository.findByAdminId(adminId);
+            return userRepository.findByAdminId(adminId, PageRequest.of(0, safeLimit, Sort.by("id").descending()));
         }
-        return userRepository.findByClassMasterIsNotNull();
+        return userRepository.findAll(PageRequest.of(0, safeLimit, Sort.by("id").descending())).getContent();
+    }
+
+    public Page<User> getAllStudentsPaged(int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        Long adminId = AdminContextHolder.getAdminId();
+        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("id").descending());
+        if (adminId != null) {
+            return userRepository.searchStudentsForAdmin(adminId, null, null, null, null, pageable);
+        }
+        return userRepository.searchStudentsForAdmin(null, null, null, null, null, pageable);
     }
 
     // Get student by rollNo
@@ -184,13 +203,9 @@ public class StudAttendanceService {
     public List<com.example.attendance_Backend.model.Attendance> getAttendanceByStudentID(Long studentID) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId != null) {
-            return repository.findAll().stream()
-                    .limit(1000)
-                    .collect(java.util.stream.Collectors.toList());
+            return repository.findTop1000ByUser_IdAndAdmin_IdOrderByDateDesc(studentID.intValue(), adminId);
         }
-        return repository.findAll().stream()
-                .limit(1000)
-                .collect(java.util.stream.Collectors.toList());
+        return repository.findTop1000ByUser_IdOrderByDateDesc(studentID.intValue());
     }
 
     public com.example.attendance_Backend.model.Attendance saveAttendance(com.example.attendance_Backend.model.Attendance attendance) {

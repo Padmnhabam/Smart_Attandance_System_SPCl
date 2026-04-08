@@ -2,9 +2,12 @@ package com.example.attendance_Backend.controller;
 
 import com.example.attendance_Backend.repository.*;
 import com.example.attendance_Backend.model.AttendanceSession;
+import com.example.attendance_Backend.model.Attendance;
+import com.example.attendance_Backend.model.User;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -34,6 +37,8 @@ public class SessionController {
     private DivisionMasterRepository divisionMasterRepository;
     @Autowired
     private AttendanceRepository attendanceRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     @PostMapping("/create")
     @Transactional
@@ -119,6 +124,36 @@ public class SessionController {
 
         sessionRepository.save(session);
 
+        // PRE-GENERATE ABSENT RECORDS
+        if (classId != null) {
+            List<User> students;
+            if (divisionId != null) {
+                students = userRepository.findByClassMaster_IdAndDivisionMaster_IdAndAdminId(classId, divisionId, adminId);
+            } else {
+                students = userRepository.findByClassMaster_IdAndAdminId(classId, adminId);
+            }
+
+            LocalDate today = LocalDate.now();
+            List<Attendance> initialRecords = new ArrayList<>();
+            for (User student : students) {
+                // To be ultra safe, check if somehow one exists (though deleted above)
+                if (!attendanceRepository.existsByUser_IdAndSessionIdAndAdminId(student.getId(), session.getId(), adminId)) {
+                    Attendance a = new Attendance();
+                    a.setUser(student);
+                    a.setSubjectMaster(session.getSubjectMaster());
+                    a.setClassMaster(session.getClassMaster());
+                    a.setDivisionMaster(session.getDivisionMaster());
+                    a.setDate(today);
+                    a.setStatus("Absent"); 
+                    a.setSessionId(session.getId());
+                    a.setAdmin(session.getAdmin());
+                    initialRecords.add(a);
+                }
+            }
+            if (!initialRecords.isEmpty()) {
+                attendanceRepository.saveAll(initialRecords);
+            }
+        }
         Map<String, String> response = new HashMap<>();
         response.put("sessionId", session.getId());
         return response;

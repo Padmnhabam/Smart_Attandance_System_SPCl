@@ -88,6 +88,31 @@
 
             <!-- Dashboard Section -->
             <div id="dashboard-section">
+                <!-- Analytics Filtering -->
+                <div class="section-filter-bar" style="margin-bottom: 20px;">
+                    <div class="filter-group">
+                        <label>Class</label>
+                        <select id="analyticsClassFilter" onchange="onAnalyticsClassChange()">
+                            <option value="">All Classes</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Division</label>
+                        <select id="analyticsDivFilter" onchange="refreshAnalyticsCharts()">
+                            <option value="">All Divisions</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Subject</label>
+                        <select id="analyticsSubjectFilter" onchange="refreshAnalyticsCharts()">
+                            <option value="">All Subjects</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="align-self:flex-end">
+                        <button class="add-btn" onclick="refreshAnalyticsCharts()" style="background:#4f46e5; height: 38px;"><i class="fas fa-filter"></i> Apply Filters</button>
+                    </div>
+                </div>
+
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-info">
@@ -215,6 +240,11 @@
                             <tbody id="studentTableBody"></tbody>
                         </table>
                     </div>
+                    <div class="table-header" style="justify-content:flex-end; gap:10px; padding-top:10px;">
+                        <button id="studentPrevBtn" class="tt-action-btn" onclick="changeStudentPage(-1)">Prev</button>
+                        <span id="studentPageInfo" style="font-size:13px;color:#64748b;">Page 0 of 0</span>
+                        <button id="studentNextBtn" class="tt-action-btn" onclick="changeStudentPage(1)">Next</button>
+                    </div>
                 </div>
             </div>
 
@@ -256,6 +286,11 @@
                             </thead>
                             <tbody id="teacherTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="table-header" style="justify-content:flex-end; gap:10px; padding-top:10px;">
+                        <button id="teacherPrevBtn" class="tt-action-btn" onclick="changeTeacherPage(-1)">Prev</button>
+                        <span id="teacherPageInfo" style="font-size:13px;color:#64748b;">Page 0 of 0</span>
+                        <button id="teacherNextBtn" class="tt-action-btn" onclick="changeTeacherPage(1)">Next</button>
                     </div>
                 </div>
             </div>
@@ -645,7 +680,6 @@
     </div>
 
     <script src="../js/admin-dashboard.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 
 </html>

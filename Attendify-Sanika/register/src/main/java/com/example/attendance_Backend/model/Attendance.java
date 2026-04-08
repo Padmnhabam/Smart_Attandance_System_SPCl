@@ -8,28 +8,34 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
-@Table(name = "attendance")
+@Table(name = "attendance", indexes = {
+        @Index(name = "idx_att_admin_date", columnList = "admin_id, date"),
+        @Index(name = "idx_att_admin_class_div_sub_date", columnList = "admin_id, class_id, division_id, subject_id, date"),
+        @Index(name = "idx_att_session_admin", columnList = "session_id, admin_id"),
+        @Index(name = "idx_att_user_admin_date_sub", columnList = "user_id, admin_id, date, subject_id"),
+        @Index(name = "idx_att_device_session_admin", columnList = "device_id, session_id, admin_id")
+})
 public class Attendance {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
     private SubjectMaster subjectMaster;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "class_id")
     private ClassMaster classMaster;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "division_id")
     private DivisionMaster divisionMaster;
 

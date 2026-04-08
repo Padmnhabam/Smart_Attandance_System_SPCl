@@ -19,7 +19,7 @@ window.fetch = (input, init = {}) => {
         headers.set("Authorization", `Bearer ${token}`);
     }
 
-    return originalFetch(input, { ...init, headers, cache: 'no-store' });
+    return originalFetch(input, { ...init, headers });
 };
 
 // =========================
@@ -76,9 +76,32 @@ function setupAdminMobileSidebar() {
 // =========================
 // STUDENTS SECTION
 // =========================
-let _allStudents = [];
+const STUDENT_PAGE_SIZE = 50;
+const TEACHER_PAGE_SIZE = 50;
+let _studentSearchDebounce = null;
+let _teacherSearchDebounce = null;
+
+let _studentState = {
+    initialized: false,
+    page: 0,
+    size: STUDENT_PAGE_SIZE,
+    totalPages: 0,
+    totalElements: 0,
+    content: []
+};
+
+let _teacherState = {
+    initialized: false,
+    page: 0,
+    size: TEACHER_PAGE_SIZE,
+    totalPages: 0,
+    totalElements: 0,
+    content: []
+};
 
 async function initStudentsSection() {
+    if (_studentState.initialized) return;
+
     // Load departments into filter
     const deptSel = document.getElementById('studentDeptFilter');
     if (deptSel.options.length <= 1) {
@@ -88,19 +111,8 @@ async function initStudentsSection() {
             depts.forEach(d => deptSel.innerHTML += `<option value="${d.id}">${d.departmentName}</option>`);
         } catch (e) { console.error(e); }
     }
-    // Load all students
-    try {
-        console.log("Fetching students from /api/admin/students...");
-        const res = await fetch('/api/admin/students'); // returns flat map with classId, className, divisionId, divisionName
-        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-        _allStudents = await res.json();
-        console.log(`Loaded ${_allStudents.length} students:`, _allStudents);
-        applyStudentFilters();
-        document.getElementById('totalStudents').innerText = _allStudents.length;
-    } catch (e) {
-        console.error('Student load error:', e);
-        document.getElementById('studentTableBody').innerHTML = `<tr><td colspan="7" style="text-align:center;color:red;padding:32px">Error loading students: ${e.message}</td></tr>`;
-    }
+    _studentState.initialized = true;
+    await fetchStudentsPage(0);
 }
 
 async function onStudentDeptChange() {
@@ -117,7 +129,7 @@ async function onStudentDeptChange() {
             filtered.forEach(c => classSel.innerHTML += `<option value="${c.id}">${c.className}</option>`);
         } catch (e) { console.error(e); }
     }
-    applyStudentFilters();
+    await fetchStudentsPage(0);
 }
 
 async function onStudentClassChange() {
@@ -131,31 +143,21 @@ async function onStudentClassChange() {
             divs.forEach(d => divSel.innerHTML += `<option value="${d.id}">${d.divisionName}</option>`);
         } catch (e) { console.error(e); }
     }
-    applyStudentFilters();
+    await fetchStudentsPage(0);
 }
 
 function applyStudentFilters() {
-    const classId = document.getElementById('studentClassFilter').value;
-    const divId = document.getElementById('studentDivFilter').value;
-    const q = (document.getElementById('studentSearchInput').value || '').toLowerCase().trim();
+    clearTimeout(_studentSearchDebounce);
+    _studentSearchDebounce = setTimeout(() => fetchStudentsPage(0), 300);
+}
 
-    let filtered = _allStudents.filter(s => {
-        // s fields are flat: classId, className, divisionId, divisionName (from /api/admin/students)
-        const matchClass = !classId || String(s.classId) === String(classId);
-        const matchDiv = !divId || String(s.divisionId) === String(divId);
-        const matchQ = !q || [s.name, s.rollNo, s.email, s.mobilenumber, s.className, s.divisionName].some(v => v && String(v).toLowerCase().includes(q));
-        return matchClass && matchDiv && matchQ;
-    });
-
+function renderStudentsTable(rows) {
     const tbody = document.getElementById('studentTableBody');
-    document.getElementById('studentCount').textContent = `(${filtered.length} of ${_allStudents.length})`;
-
-    if (!filtered.length) {
+    if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:32px">No students match the selected filters.</td></tr>`;
         return;
     }
-
-    tbody.innerHTML = filtered.map(s => `
+    tbody.innerHTML = rows.map(s => `
         <tr>
             <td><strong>${s.rollNo || '--'}</strong></td>
             <td>${s.name || '--'}</td>
@@ -167,12 +169,87 @@ function applyStudentFilters() {
         </tr>`).join('');
 }
 
+function updateStudentPager() {
+    const pageInfo = document.getElementById('studentPageInfo');
+    const prevBtn = document.getElementById('studentPrevBtn');
+    const nextBtn = document.getElementById('studentNextBtn');
+    const countEl = document.getElementById('studentCount');
+
+    const { page, size, totalPages, totalElements, content } = _studentState;
+
+    if (totalElements === 0) {
+        countEl.textContent = '(0 of 0)';
+        pageInfo.textContent = 'Page 0 of 0';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+    }
+
+    const start = page * size + 1;
+    const end = Math.min(page * size + content.length, totalElements);
+    countEl.textContent = `(${start}-${end} of ${totalElements})`;
+    pageInfo.textContent = `Page ${page + 1} of ${Math.max(totalPages, 1)}`;
+    prevBtn.disabled = page <= 0;
+    nextBtn.disabled = page >= totalPages - 1;
+}
+
+function getStudentsQueryParams(pageNo) {
+    const params = new URLSearchParams();
+    params.set('page', String(Math.max(pageNo, 0)));
+    params.set('size', String(_studentState.size));
+
+    const departmentId = document.getElementById('studentDeptFilter')?.value || '';
+    const classId = document.getElementById('studentClassFilter')?.value || '';
+    const divisionId = document.getElementById('studentDivFilter')?.value || '';
+    const q = (document.getElementById('studentSearchInput')?.value || '').trim();
+
+    if (departmentId) params.set('departmentId', departmentId);
+    if (classId) params.set('classId', classId);
+    if (divisionId) params.set('divisionId', divisionId);
+    if (q) params.set('q', q);
+
+    return params;
+}
+
+async function fetchStudentsPage(pageNo = 0) {
+    const tbody = document.getElementById('studentTableBody');
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">Loading students...</td></tr>`;
+    try {
+        const params = getStudentsQueryParams(pageNo);
+        const res = await fetch(`/api/admin/students?${params.toString()}`);
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+
+        const payload = await res.json();
+        _studentState.page = payload.page ?? 0;
+        _studentState.size = payload.size ?? STUDENT_PAGE_SIZE;
+        _studentState.totalPages = payload.totalPages ?? 0;
+        _studentState.totalElements = payload.totalElements ?? 0;
+        _studentState.content = Array.isArray(payload.content) ? payload.content : [];
+
+        renderStudentsTable(_studentState.content);
+        updateStudentPager();
+        const hasActiveFilter = params.has('departmentId') || params.has('classId') || params.has('divisionId') || params.has('q');
+        if (!hasActiveFilter) {
+            document.getElementById('totalStudents').innerText = _studentState.totalElements;
+        }
+    } catch (e) {
+        console.error('Student load error:', e);
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:red;padding:32px">Error loading students: ${e.message}</td></tr>`;
+    }
+}
+
+function changeStudentPage(delta) {
+    const nextPage = _studentState.page + delta;
+    if (nextPage < 0 || nextPage >= _studentState.totalPages) return;
+    fetchStudentsPage(nextPage);
+}
+
 // =========================
 // TEACHERS SECTION
 // =========================
-let _allTeachers = [];
-
 async function initTeachersSection() {
+    if (_teacherState.initialized) return;
+
     const deptSel = document.getElementById('teacherDeptFilter');
     if (deptSel.options.length <= 1) {
         try {
@@ -181,47 +258,22 @@ async function initTeachersSection() {
             depts.forEach(d => deptSel.innerHTML += `<option value="${d.id}">${d.departmentName}</option>`);
         } catch (e) { console.error(e); }
     }
-    try {
-        console.log("Fetching teachers from /api/admin/teachers...");
-        const res = await fetch('/api/admin/teachers');
-        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-        _allTeachers = await res.json();
-        console.log(`Loaded ${_allTeachers.length} teachers:`, _allTeachers);
-        applyTeacherFilters();
-        document.getElementById('totalTeachers').innerText = _allTeachers.length;
-    } catch (e) {
-        console.error('Teacher load error:', e);
-        document.getElementById('teacherTableBody').innerHTML = `<tr><td colspan="6" style="text-align:center;color:red;padding:32px">Error loading teachers: ${e.message}</td></tr>`;
-    }
+    _teacherState.initialized = true;
+    await fetchTeachersPage(0);
 }
 
 function applyTeacherFilters() {
-    const deptId = document.getElementById('teacherDeptFilter').value;
-    const q = (document.getElementById('teacherSearchInput').value || '').toLowerCase().trim();
+    clearTimeout(_teacherSearchDebounce);
+    _teacherSearchDebounce = setTimeout(() => fetchTeachersPage(0), 300);
+}
 
-    let filtered = _allTeachers.filter(t => {
-        // department can be either a string or an object {id, departmentName}
-        const deptName = t.department && typeof t.department === 'object'
-            ? t.department.departmentName
-            : (t.department || '');
-        const deptIdVal = t.department && typeof t.department === 'object'
-            ? String(t.department.id)
-            : '';
-
-        const matchDept = !deptId || deptIdVal === String(deptId);
-        const matchQ = !q || [t.name, t.email, t.mobilenumber, deptName].some(v => v && String(v).toLowerCase().includes(q));
-        return matchDept && matchQ;
-    });
-
+function renderTeachersTable(rows) {
     const tbody = document.getElementById('teacherTableBody');
-    document.getElementById('teacherCount').textContent = `(${filtered.length} of ${_allTeachers.length})`;
-
-    if (!filtered.length) {
+    if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:32px">No teachers match the selected filters.</td></tr>`;
         return;
     }
-
-    tbody.innerHTML = filtered.map(t => {
+    tbody.innerHTML = rows.map(t => {
         const deptName = t.department && typeof t.department === 'object'
             ? t.department.departmentName
             : (t.department || '--');
@@ -237,36 +289,220 @@ function applyTeacherFilters() {
     }).join('');
 }
 
+function updateTeacherPager() {
+    const pageInfo = document.getElementById('teacherPageInfo');
+    const prevBtn = document.getElementById('teacherPrevBtn');
+    const nextBtn = document.getElementById('teacherNextBtn');
+    const countEl = document.getElementById('teacherCount');
+
+    const { page, size, totalPages, totalElements, content } = _teacherState;
+
+    if (totalElements === 0) {
+        countEl.textContent = '(0 of 0)';
+        pageInfo.textContent = 'Page 0 of 0';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+    }
+
+    const start = page * size + 1;
+    const end = Math.min(page * size + content.length, totalElements);
+    countEl.textContent = `(${start}-${end} of ${totalElements})`;
+    pageInfo.textContent = `Page ${page + 1} of ${Math.max(totalPages, 1)}`;
+    prevBtn.disabled = page <= 0;
+    nextBtn.disabled = page >= totalPages - 1;
+}
+
+function getTeachersQueryParams(pageNo) {
+    const params = new URLSearchParams();
+    params.set('page', String(Math.max(pageNo, 0)));
+    params.set('size', String(_teacherState.size));
+
+    const departmentId = document.getElementById('teacherDeptFilter')?.value || '';
+    const q = (document.getElementById('teacherSearchInput')?.value || '').trim();
+
+    if (departmentId) params.set('departmentId', departmentId);
+    if (q) params.set('q', q);
+    return params;
+}
+
+async function fetchTeachersPage(pageNo = 0) {
+    const tbody = document.getElementById('teacherTableBody');
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#64748b;padding:24px">Loading teachers...</td></tr>`;
+    try {
+        const params = getTeachersQueryParams(pageNo);
+        const res = await fetch(`/api/admin/teachers?${params.toString()}`);
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+
+        const payload = await res.json();
+        _teacherState.page = payload.page ?? 0;
+        _teacherState.size = payload.size ?? TEACHER_PAGE_SIZE;
+        _teacherState.totalPages = payload.totalPages ?? 0;
+        _teacherState.totalElements = payload.totalElements ?? 0;
+        _teacherState.content = Array.isArray(payload.content) ? payload.content : [];
+
+        renderTeachersTable(_teacherState.content);
+        updateTeacherPager();
+        const hasActiveFilter = params.has('departmentId') || params.has('q');
+        if (!hasActiveFilter) {
+            document.getElementById('totalTeachers').innerText = _teacherState.totalElements;
+        }
+    } catch (e) {
+        console.error('Teacher load error:', e);
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:red;padding:32px">Error loading teachers: ${e.message}</td></tr>`;
+    }
+}
+
+function changeTeacherPage(delta) {
+    const nextPage = _teacherState.page + delta;
+    if (nextPage < 0 || nextPage >= _teacherState.totalPages) return;
+    fetchTeachersPage(nextPage);
+}
+
+
+// =========================
+// Analytics Dashboard Filtering
+// =========================
+async function initAnalyticsFilters() {
+    const classSel = document.getElementById('analyticsClassFilter');
+    if (!classSel) return;
+    
+    try {
+        const res = await fetch('/api/master/classes');
+        const classes = await res.json();
+        classes.forEach(c => classSel.innerHTML += `<option value="${c.id}">${c.className}</option>`);
+    } catch (e) { console.error('Failed to load class filters', e); }
+
+    try {
+        const res = await fetch('/api/master/subjects');
+        const subjects = await res.json();
+        const subjSel = document.getElementById('analyticsSubjectFilter');
+        subjects.forEach(s => subjSel.innerHTML += `<option value="${s.id}">${s.subjectName}</option>`);
+    } catch (e) { console.error('Failed to load subject filters', e); }
+}
+
+async function onAnalyticsClassChange() {
+    const classId = document.getElementById('analyticsClassFilter').value;
+    const divSel = document.getElementById('analyticsDivFilter');
+    divSel.innerHTML = '<option value="">All Divisions</option>';
+    if (classId) {
+        try {
+            const res = await fetch(`/api/master/classes/${classId}/divisions`);
+            const divs = await res.json();
+            divs.forEach(d => divSel.innerHTML += `<option value="${d.id}">${d.divisionName}</option>`);
+        } catch (e) { console.error(e); }
+    }
+    refreshAnalyticsCharts();
+}
+
+function refreshAnalyticsCharts() {
+    loadClassAttendanceChart();
+    loadTrendChart();
+    loadSubjectChart();
+}
+
+function getAnalyticsQueryParams() {
+    const classId = document.getElementById('analyticsClassFilter')?.value || '';
+    const divId = document.getElementById('analyticsDivFilter')?.value || '';
+    const subId = document.getElementById('analyticsSubjectFilter')?.value || '';
+    let params = [];
+    if (classId) params.push(`classId=${classId}`);
+    if (divId) params.push(`divisionId=${divId}`);
+    if (subId) params.push(`subjectId=${subId}`);
+    return params.length > 0 ? '?' + params.join('&') : '';
+}
+
+// =========================
+// Chart Helpers & Integrity
+// =========================
+function getChartTooltipConfig() {
+    return {
+        callbacks: {
+            label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                if (context.parsed.x !== undefined) {
+                    const dataObj = context.chart.data.datasets[context.datasetIndex].allData?.[context.dataIndex];
+                    if (dataObj && dataObj.total !== undefined) {
+                        return `${label}${context.parsed.x}% (${dataObj.present}/${dataObj.total} students)`;
+                    }
+                    return `${label}${context.parsed.x}%`;
+                }
+                return label;
+            }
+        }
+    };
+}
+
+function checkEmptyChart(data, canvasId, message = "No data found for selected filters") {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return false;
+    const ctx = canvas.getContext('2d');
+    if (!data || data.length === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px Poppins';
+        ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+        return true;
+    }
+    return false;
+}
 
 // =========================
 // Chart 1: Class-wise Attendance Bar
 // =========================
 async function loadClassAttendanceChart() {
     try {
-        const res = await fetch('/api/admin/reports/class-attendance');
+        const res = await fetch(`/api/attendance/analytics/department${getAnalyticsQueryParams()}`);
         if (!res.ok) return;
-        const data = await res.json();
+        let data = await res.json();
+        
+        // INTEGRITY: Hide chart if empty
+        if (checkEmptyChart(data, 'classAttendanceChart')) {
+            if (classAttendanceChartInstance) classAttendanceChartInstance.destroy();
+            return;
+        }
+
+        // INTEGRITY: Sort by percentage Descending
+        data.sort((a, b) => {
+            const pctA = a.total > 0 ? (a.present / a.total) : 0;
+            const pctB = b.total > 0 ? (b.present / b.total) : 0;
+            return pctB - pctA;
+        });
+
         const ctx = document.getElementById('classAttendanceChart');
         if (!ctx) return;
         if (classAttendanceChartInstance) classAttendanceChartInstance.destroy();
 
-        const labels = data.map(d => d.className || d.label || 'Unknown');
-        const percents = data.map(d => d.totalCount > 0 ? Math.round((d.presentCount / d.totalCount) * 100) : 0);
+        const labels = data.map(d => d.subject || 'Unknown');
+        const percents = data.map(d => d.total > 0 ? Math.round((d.present / d.total) * 100) : 0);
         const colors = percents.map(p => p >= 75 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444');
 
         classAttendanceChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels,
-                datasets: [{ label: 'Attendance %', data: percents, backgroundColor: colors, borderRadius: 6 }]
+                datasets: [{ 
+                    label: 'Attendance %', 
+                    data: percents, 
+                    backgroundColor: colors, 
+                    borderRadius: 6,
+                    allData: data // Store for tooltip context
+                }]
             },
             options: {
+                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: getChartTooltipConfig() // ENRICHED TOOLTIP
+                },
                 scales: {
-                    y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
-                    x: { grid: { display: false } }
+                    x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
+                    y: { grid: { display: false } }
                 }
             }
         });
@@ -278,20 +514,19 @@ async function loadClassAttendanceChart() {
 // =========================
 async function loadTrendChart() {
     try {
-        const res = await fetch('/api/attendance/analytics/date');
+        const res = await fetch(`/api/attendance/analytics/date${getAnalyticsQueryParams()}`);
         if (!res.ok) return;
         const raw = await res.json();
         const ctx = document.getElementById('trendChart');
         if (!ctx) return;
         if (trendChartInstance) trendChartInstance.destroy();
 
-        // Take last 7 entries
-        const data = raw.slice(-7);
+        const data = raw.slice(-14); // show up to 14 days
         const labels = data.map(d => {
             const dt = new Date(d.date);
             return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
         });
-        const percents = data.map(d => d.totalCount > 0 ? Math.round((d.presentCount / d.totalCount) * 100) : 0);
+        const percents = data.map(d => d.total > 0 ? Math.round((d.present / d.total) * 100) : 0);
 
         trendChartInstance = new Chart(ctx, {
             type: 'line',
@@ -326,33 +561,60 @@ async function loadTrendChart() {
 // =========================
 async function loadSubjectChart() {
     try {
-        const res = await fetch('/api/attendance/analytics/subject');
+        const res = await fetch(`/api/attendance/analytics/subject${getAnalyticsQueryParams()}`);
         if (!res.ok) return;
-        const data = await res.json();
+        let data = await res.json();
+        
+        if (checkEmptyChart(data, 'subjectChart')) {
+            if (subjectChartInstance) subjectChartInstance.destroy();
+            return;
+        }
+
+        // INTEGRITY: Sort by volume (total classes) descending
+        data.sort((a, b) => (b.total || 0) - (a.total || 0));
+
         const ctx = document.getElementById('subjectChart');
         if (!ctx) return;
         if (subjectChartInstance) subjectChartInstance.destroy();
 
-        const labels = data.slice(0, 8).map(d => d.label || d.subjectName || 'N/A');
-        const totals = data.slice(0, 8).map(d => d.totalCount || 0);
-        const presents = data.slice(0, 8).map(d => d.presentCount || 0);
+        // Limit to 20 subjects dynamically
+        const displayData = data.slice(0, 20);
+        
+        const labels = displayData.map(d => d.subject || 'N/A');
+        const totals = displayData.map(d => d.total || 0);
+        const presents = displayData.map(d => d.present || 0);
 
         subjectChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels,
                 datasets: [
-                    { label: 'Total', data: totals, backgroundColor: '#6366f133', borderColor: '#6366f1', borderWidth: 1.5, borderRadius: 4 },
-                    { label: 'Present', data: presents, backgroundColor: '#10b981aa', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 4 }
+                    { label: 'Total Scans Possible', data: totals, backgroundColor: '#6366f122', borderColor: '#6366f1', borderWidth: 1, borderRadius: 4 },
+                    { label: 'Present Students', data: presents, backgroundColor: '#10b981aa', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 4, allData: displayData }
                 ]
             },
             options: {
+                indexAxis: 'y', 
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                plugins: { 
+                    legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.datasetIndex === 1) { // Present dataset
+                                    const d = context.dataset.allData[context.dataIndex];
+                                    const pct = d.total > 0 ? Math.round((d.present / d.total) * 100) : 0;
+                                    return `Presence: ${pct}% (${context.parsed.x} students)`;
+                                }
+                                return `${context.dataset.label}: ${context.parsed.x}`;
+                            }
+                        }
+                    }
+                },
                 scales: {
-                    y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
-                    x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+                    x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                    y: { grid: { display: false }, ticks: { font: { size: 10 } } }
                 }
             }
         });
@@ -631,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     showSection('dashboard');
     loadAttendanceOverview();
+    initAnalyticsFilters();
     loadClassAttendanceChart();
     loadTrendChart();
     loadSubjectChart();
@@ -767,12 +1030,18 @@ async function deleteSlot(id) {
 // ---- Teacher Timetable Grid ----
 async function loadTeachersDropdown() {
     try {
-        const res = await fetch('/api/admin/teachers');
+        const res = await fetch('/api/admin/teachers?page=0&size=500');
         if (!res.ok) throw new Error('Failed to fetch teachers');
-        const teachers = await res.json();
+        const payload = await res.json();
+        const teachers = Array.isArray(payload.content) ? payload.content : [];
         const sel = document.getElementById('ttTeacherSelect');
         sel.innerHTML = '<option value="">-- Choose Teacher --</option>' +
-            teachers.map(t => `<option value="${t.id}">${t.name} (${t.department || 'Dept N/A'})</option>`).join('');
+            teachers.map(t => {
+                const deptName = t.department && typeof t.department === 'object'
+                    ? t.department.departmentName
+                    : (t.department || 'Dept N/A');
+                return `<option value="${t.id}">${t.name} (${deptName})</option>`;
+            }).join('');
     } catch (err) {
         console.error(err);
     }

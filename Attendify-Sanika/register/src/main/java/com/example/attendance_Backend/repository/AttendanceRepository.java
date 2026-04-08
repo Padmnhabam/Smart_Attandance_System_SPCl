@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -24,6 +26,8 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
 
     // Session-scoped duplicate checks (used in markAttendance)
     boolean existsByUser_IdAndSessionIdAndAdminId(int userId, String sessionId, Long adminId);
+    
+    Optional<Attendance> findByUser_IdAndSessionIdAndAdminId(int userId, String sessionId, Long adminId);
 
     boolean existsByDeviceIdAndSessionIdAndAdminId(String deviceId, String sessionId, Long adminId);
 
@@ -148,6 +152,90 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
             nativeQuery = true)
     List<Object[]> getStudentTabDataNative(@Param("adminId") Long adminId);
 
+    @Query(value = """
+            SELECT u.id, u.roll_no, u.name,
+                   COALESCE(cm.class_name, '-') AS class_name,
+                   COALESCE(sm.subject_name, '-') AS subject_name,
+                   COALESCE(a.status, 'Absent') AS status
+            FROM users u
+            LEFT JOIN class_master cm ON cm.id = u.class_id
+            LEFT JOIN division_master dm ON dm.id = u.division_id
+            LEFT JOIN attendance a ON a.user_id = u.id
+                AND a.date = CURRENT_DATE
+                AND (:subjectId IS NULL OR a.subject_id = :subjectId)
+            LEFT JOIN subject_master sm ON sm.id = a.subject_id
+            WHERE u.role = 'STUDENT'
+            AND u.admin_id = :adminId
+            AND (:classId IS NULL OR u.class_id = :classId)
+            AND (:divisionId IS NULL OR u.division_id = :divisionId)
+            AND (
+                :q IS NULL OR :q = ''
+                OR LOWER(COALESCE(u.roll_no, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+            )
+            ORDER BY u.roll_no
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT u.id)
+            FROM users u
+            WHERE u.role = 'STUDENT'
+            AND u.admin_id = :adminId
+            AND (:classId IS NULL OR u.class_id = :classId)
+            AND (:divisionId IS NULL OR u.division_id = :divisionId)
+            AND (
+                :q IS NULL OR :q = ''
+                OR LOWER(COALESCE(u.roll_no, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+            )
+            """,
+            nativeQuery = true)
+    Page<Object[]> getFilteredStudentTabDataNativePaged(
+            @Param("classId") Integer classId,
+            @Param("divisionId") Integer divisionId,
+            @Param("subjectId") Integer subjectId,
+            @Param("adminId") Long adminId,
+            @Param("q") String q,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT u.id, u.roll_no, u.name,
+                   COALESCE(cm.class_name, '-') AS class_name,
+                   COALESCE(sm.subject_name, '-') AS subject_name,
+                   COALESCE(a.status, 'Absent') AS status
+            FROM users u
+            LEFT JOIN class_master cm ON cm.id = u.class_id
+            LEFT JOIN attendance a ON a.user_id = u.id AND a.date = CURRENT_DATE
+            LEFT JOIN subject_master sm ON sm.id = a.subject_id
+            WHERE u.role = 'STUDENT'
+            AND u.admin_id = :adminId
+            AND (
+                :q IS NULL OR :q = ''
+                OR LOWER(COALESCE(u.roll_no, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+            )
+            ORDER BY u.roll_no
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT u.id)
+            FROM users u
+            WHERE u.role = 'STUDENT'
+            AND u.admin_id = :adminId
+            AND (
+                :q IS NULL OR :q = ''
+                OR LOWER(COALESCE(u.roll_no, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+            )
+            """,
+            nativeQuery = true)
+    Page<Object[]> getStudentTabDataNativePaged(
+            @Param("adminId") Long adminId,
+            @Param("q") String q,
+            Pageable pageable);
+
 
     @Query("""
                 SELECT a FROM Attendance a
@@ -184,9 +272,18 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 )
                 FROM Attendance a
                 WHERE a.admin.id = :adminId
+                AND (:classId IS NULL OR a.classMaster.id = :classId)
+                AND (:divisionId IS NULL OR a.divisionMaster.id = :divisionId)
+                AND (:subjectId IS NULL OR a.subjectMaster.id = :subjectId)
+                AND (:teacherId IS NULL OR a.sessionId IN (SELECT s.id FROM AttendanceSession s WHERE s.teacherId = :teacherId))
                 GROUP BY a.subjectMaster.subjectName
             """)
-    List<SubjectAnalyticsDTO> getSubjectAnalyticsByAdminId(@Param("adminId") Long adminId);
+    List<SubjectAnalyticsDTO> getSubjectAnalyticsByAdminId(
+            @Param("adminId") Long adminId,
+            @Param("classId") Integer classId,
+            @Param("divisionId") Integer divisionId,
+            @Param("subjectId") Integer subjectId,
+            @Param("teacherId") Integer teacherId);
 
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.SubjectAnalyticsDTO(
@@ -197,9 +294,18 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 )
                 FROM Attendance a
                 WHERE a.admin.id = :adminId
+                AND (:classId IS NULL OR a.classMaster.id = :classId)
+                AND (:divisionId IS NULL OR a.divisionMaster.id = :divisionId)
+                AND (:subjectId IS NULL OR a.subjectMaster.id = :subjectId)
+                AND (:teacherId IS NULL OR a.sessionId IN (SELECT s.id FROM AttendanceSession s WHERE s.teacherId = :teacherId))
                 GROUP BY a.classMaster.className
             """)
-    List<SubjectAnalyticsDTO> getDepartmentAnalyticsByAdminId(@Param("adminId") Long adminId);
+    List<SubjectAnalyticsDTO> getDepartmentAnalyticsByAdminId(
+             @Param("adminId") Long adminId,
+             @Param("classId") Integer classId,
+             @Param("divisionId") Integer divisionId,
+             @Param("subjectId") Integer subjectId,
+             @Param("teacherId") Integer teacherId);
 
     @Query("""
                 SELECT new com.example.attendance_Backend.dto.DateAnalyticsDTO(
@@ -210,10 +316,19 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
                 )
                 FROM Attendance a
                 WHERE a.admin.id = :adminId
+                AND (:classId IS NULL OR a.classMaster.id = :classId)
+                AND (:divisionId IS NULL OR a.divisionMaster.id = :divisionId)
+                AND (:subjectId IS NULL OR a.subjectMaster.id = :subjectId)
+                AND (:teacherId IS NULL OR a.sessionId IN (SELECT s.id FROM AttendanceSession s WHERE s.teacherId = :teacherId))
                 GROUP BY a.date
                 ORDER BY a.date
             """)
-    List<DateAnalyticsDTO> getDateAnalyticsByAdminId(@Param("adminId") Long adminId);
+    List<DateAnalyticsDTO> getDateAnalyticsByAdminId(
+            @Param("adminId") Long adminId,
+            @Param("classId") Integer classId,
+            @Param("divisionId") Integer divisionId,
+            @Param("subjectId") Integer subjectId,
+            @Param("teacherId") Integer teacherId);
 
     @Query("SELECT COUNT(a) FROM Attendance a WHERE LOWER(a.status) = 'present' AND a.date = :today")
     int countPresentByDate(LocalDate today);
@@ -230,6 +345,10 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Integer>
     int countByUserId(int userId);
 
     int countByUserIdAndStatus(int userId, String status);
+
+    List<Attendance> findTop1000ByUser_IdAndAdmin_IdOrderByDateDesc(int userId, Long adminId);
+
+    List<Attendance> findTop1000ByUser_IdOrderByDateDesc(int userId);
 
     boolean existsByUserAndSubjectMaster_SubjectNameAndDate(
             com.example.attendance_Backend.model.User user,
