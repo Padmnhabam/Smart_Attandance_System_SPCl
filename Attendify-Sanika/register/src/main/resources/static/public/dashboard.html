@@ -550,6 +550,7 @@
                 <li onclick="showSection('attendance')">📅 Attendance</li>
                 <li onclick="showSection('profile')">👤 Profile</li>
                 <li onclick="showSection('notesSection')">📚Available Notes</li>
+                <li onclick="showSection('notices')">📢 Notices</li>
                 <li onclick="showSection('leaveReqSection')">📝 Leave Request</li>
                 <li onclick="logout()">🚪 Logout</li>
             </ul>
@@ -652,7 +653,7 @@
                     </div>
 
                     <div class="table-wrapper">
-                        <table>
+                        <table id="monthlyAttendanceTable">
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -700,24 +701,49 @@
                 </div>
             </section>
 
-            <!-- LEAVE REQUEST -->
-            <section id="leaveReqSection" class="section hidden">
-                <h2 style="margin-bottom: 1.5rem; color: #1e1a3a">Leave Request</h2>
+            <!-- NOTICES -->
+            <section id="notices" class="section hidden">
+                <div class="table-header" style="margin-bottom: 25px; padding: 0;">
+                    <h3 style="font-size: 1.6rem; display: flex; align-items: center; gap: 12px;">
+                        <i class="fas fa-bullhorn" style="color: var(--primary);"></i>
+                        Global Notices
+                    </h3>
+                </div>
+                <div id="studentNoticesContainer" class="notices-grid">
+                    <!-- Loaded via JS -->
+                </div>
+            </section>
 
-                <div class="leave-form">
-                    <select id="leaveTeacher" required
-                        style="width:100%; padding: 0.75rem; border-radius: 12px; border:1px solid #ccc; margin-bottom: 1rem;">
-                        <option value="">Select Teacher</option>
-                    </select>
-                    <input type="date" id="fromDate" required /><br /><br />
-                    <input type="date" id="toDate" required /><br /><br />
-                    <textarea id="reason" placeholder="Enter reason" required></textarea>
-                    <br /><br />
-                    <button onclick="submitLeave()">Submit</button>
+            <!-- LEAVE REQUESTS -->
+            <section id="leaveReqSection" class="section hidden">
+                <h2><i class="fas fa-file-signature"></i> Leave Request</h2>
+
+                <div class="leave-form-grid">
+                    <div class="form-field">
+                        <label for="leaveTeacher">Teacher</label>
+                        <select id="leaveTeacher" required>
+                            <option value="">Select Teacher</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="fromDate">From Date</label>
+                        <input type="date" id="fromDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="toDate">To Date</label>
+                        <input type="date" id="toDate" required>
+                    </div>
+                    <div class="form-field" style="grid-column: 1 / -1;">
+                        <label for="reason">Reason</label>
+                        <textarea id="reason" placeholder="Enter reason" rows="3" required></textarea>
+                    </div>
                 </div>
 
-                <h3 style="margin-top: 30px">Your Leave Requests</h3>
+                <button class="leave-submit-btn" onclick="submitLeave()">
+                    <i class="fas fa-paper-plane"></i> Submit
+                </button>
 
+                <h3 style="margin-top: 30px;">Your Leave Requests</h3>
                 <div class="table-wrapper">
                     <table id="leaveTable">
                         <thead>
@@ -735,12 +761,9 @@
         </div>
     </div>
 
-    </div>
-    </div>
-
     <!-- ===== CLASS & DIVISION SETUP MODAL (Mandatory on First Login) ===== -->
     <div id="setupModal" class="modal-overlay hidden"
-        style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:100;display:flex;align-items:center;justify-content:center;">
+        style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center;">
         <div class="modal-content"
             style="background:white;padding:2rem;border-radius:20px;width:90%;max-width:400px;text-align:center;">
             <h3 style="margin-bottom:1rem;color:#322e72;">Set Up Your Profile</h3>

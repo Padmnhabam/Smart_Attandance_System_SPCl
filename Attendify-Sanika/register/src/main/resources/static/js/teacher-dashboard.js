@@ -147,6 +147,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Set active nav link
     setActiveNavLink('dashboard');
 
+    setupTeacherMobileSidebar();
+
     loadTeacherSubjectsForNotes();
 });
 
@@ -194,6 +196,43 @@ function updateDateTime() {
             second: '2-digit'
         });
     }
+}
+
+function setupTeacherMobileSidebar() {
+    const toggleBtn = document.getElementById('teacherMenuToggle');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('teacherSidebarOverlay');
+
+    if (!toggleBtn || !sidebar || !overlay) return;
+
+    toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('sidebar-open');
+        overlay.classList.toggle('show');
+        document.body.classList.toggle('menu-open');
+    });
+
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('sidebar-open');
+        overlay.classList.remove('show');
+        document.body.classList.remove('menu-open');
+    });
+
+    // Close on navigation
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', () => {
+            sidebar.classList.remove('sidebar-open');
+            overlay.classList.remove('show');
+            document.body.classList.remove('menu-open');
+        });
+    });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 992) {
+            sidebar.classList.remove('sidebar-open');
+            overlay.classList.remove('show');
+            document.body.classList.remove('menu-open');
+        }
+    });
 }
 
 // Setup event listeners
@@ -247,6 +286,9 @@ function showTab(tabName) {
             'teacher-profile': 'My Profile',
             'timetable': 'My Timetable',
             'reports': 'Attendance Reports',
+            'notices': 'Global Notices',
+            'leave-requests': 'Leave Requests',
+            'upload-notes': 'Upload Notes',
             'settings': 'System Settings'
         };
 
@@ -297,6 +339,9 @@ function loadTabContent(tabName) {
             break;
         case 'leave-requests':
             loadLeaveRequests();
+            break;
+        case 'notices':
+            loadTeacherNotices();
             break;
     }
     populateSharedMasterData();
@@ -811,6 +856,28 @@ function openEditProfileModal() {
         document.getElementById('editTeacherPhone').value = t.mobilenumber || "";
         document.getElementById('editTeacherDepartment').value = t.department?.departmentName || t.department || "";
         document.getElementById('editTeacherRole').value = t.role || "TEACHER";
+        
+        // New fields
+        const bios = document.getElementById('editTeacherBio');
+        if (bios) bios.value = t.bio || "";
+        
+        const addr = document.getElementById('editTeacherAddress');
+        if (addr) addr.value = t.permanentAddress || "";
+        
+        const dob = document.getElementById('editTeacherDOB');
+        if (dob) dob.value = t.dateOfBirth || "";
+        
+        const edu = document.getElementById('editTeacherEducation');
+        if (edu) edu.value = t.education || "";
+        
+        const appt = document.getElementById('editTeacherAppointment');
+        if (appt) appt.value = t.dateOfAppointment || "";
+
+        const spouseName = document.getElementById('editTeacherSpouseName');
+        if (spouseName) spouseName.value = t.spouseName || "";
+
+        const spouseContact = document.getElementById('editTeacherSpouseContact');
+        if (spouseContact) spouseContact.value = t.spouseContact || "";
     }
 
     modal.style.display = 'flex';
@@ -827,7 +894,14 @@ function setupProfileFormListeners() {
                 name: document.getElementById('editTeacherName').value,
                 email: document.getElementById('editTeacherEmail').value,
                 mobilenumber: document.getElementById('editTeacherPhone').value,
-                role: document.getElementById('editTeacherRole').value
+                role: document.getElementById('editTeacherRole').value,
+                bio: document.getElementById('editTeacherBio')?.value || "",
+                permanentAddress: document.getElementById('editTeacherAddress')?.value || "",
+                dateOfBirth: document.getElementById('editTeacherDOB')?.value || "",
+                education: document.getElementById('editTeacherEducation')?.value || "",
+                dateOfAppointment: document.getElementById('editTeacherAppointment')?.value || "",
+                spouseName: document.getElementById('editTeacherSpouseName')?.value || "",
+                spouseContact: document.getElementById('editTeacherSpouseContact')?.value || ""
             };
 
             try {
@@ -1957,15 +2031,22 @@ async function loadTeacherSubjectsForNotes() {
 
     try {
         const res = await fetch(`/api/teacher/timetable/${teacherId}`);
+        if (!res.ok) {
+            console.warn("Could not load timetable for note subjects:", res.status);
+            return;
+        }
         const ttCells = await res.json();
+        const cells = Array.isArray(ttCells) ? ttCells : [];
 
         const subjectDropdown = document.getElementById("notesSubject");
         if (!subjectDropdown) return;
 
         subjectDropdown.innerHTML = `<option value="">Select Subject</option>`;
         const uniqueSubjects = new Set();
-        ttCells.forEach(cell => {
-            if (cell.subjectMaster) uniqueSubjects.add(cell.subjectMaster.subjectName);
+        cells.forEach(cell => {
+            if (cell && cell.subjectMaster && cell.subjectMaster.subjectName) {
+                uniqueSubjects.add(cell.subjectMaster.subjectName);
+            }
         });
 
         uniqueSubjects.forEach(sub => {
@@ -2660,6 +2741,8 @@ async function loadTimetableGrid() {
     const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     try {
+        timetableData = {};
+
         // 1. Load timetable structure (period/break rows defined by admin)
         const authToken = (localStorage.getItem('teacherAuthToken') || localStorage.getItem('authToken')) || '';
         const structRes = await fetch('/api/teacher/timetable/structure', {
@@ -2667,7 +2750,8 @@ async function loadTimetableGrid() {
         });
         if (!structRes.ok) throw new Error('Could not load structure: ' + structRes.status);
 
-        const slots = await structRes.json();
+        const structurePayload = await structRes.json();
+        const slots = Array.isArray(structurePayload) ? structurePayload : [];
 
         if (!slots.length) {
             document.getElementById('timetableStatus').textContent = '⚠️ No timetable structure found. Ask admin to set it up.';
@@ -2679,10 +2763,14 @@ async function loadTimetableGrid() {
             headers: { 'Authorization': 'Bearer ' + authToken }
         });
         if (ttRes.ok) {
-            const cells = await ttRes.json();
+            const cellsPayload = await ttRes.json();
+            const cells = Array.isArray(cellsPayload) ? cellsPayload : [];
             cells.forEach(cell => {
+                if (!cell || !cell.slot || !cell.slot.id || !cell.dayOfWeek) return;
                 timetableData[`${cell.slot.id}_${cell.dayOfWeek}`] = cell;
             });
+        } else {
+            console.warn('Could not load existing timetable cells:', ttRes.status);
         }
 
         // 3. Build header row
@@ -2698,10 +2786,12 @@ async function loadTimetableGrid() {
 
         // Pre-load all departments and classes for dropdowns
         const masterDeptsRes = await fetch('/api/master/departments');
-        const masterDepts = await masterDeptsRes.json();
+        const masterDeptsPayload = masterDeptsRes.ok ? await masterDeptsRes.json() : [];
+        const masterDepts = Array.isArray(masterDeptsPayload) ? masterDeptsPayload : [];
 
         const masterClassesRes = await fetch('/api/master/classes');
-        const masterClasses = await masterClassesRes.json();
+        const masterClassesPayload = masterClassesRes.ok ? await masterClassesRes.json() : [];
+        const masterClasses = Array.isArray(masterClassesPayload) ? masterClassesPayload : [];
 
         slots.forEach(slot => {
             const isBreak = slot.slotType === 'BREAK';
@@ -2892,7 +2982,10 @@ async function saveTimetableSlot(changedInput) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        if (!res.ok) throw new Error('Save failed');
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            throw new Error(`Save failed (${res.status}) ${errText}`);
+        }
         const saved = await res.json();
         timetableData[`${slotId}_${day}`] = saved;
 
@@ -3739,3 +3832,125 @@ window.switchReportTab = function(tabEl) {
     }
 };
 
+async function loadTeacherNotices() {
+    const container = document.getElementById('teacherNoticesContainer');
+    if (!container) return;
+
+    try {
+        const response = await fetch('/api/notices/all');
+        if (!response.ok) throw new Error('Failed to fetch notices');
+
+        const notices = await response.json();
+
+        if (!notices || notices.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-bullhorn"></i>
+                    <h3>No Notices Yet</h3>
+                    <p>Important announcements from the admin will appear here.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = notices.map(notice => `
+            <div class="notice-card" style="border-left: 4px solid var(--secondary-color);">
+                <div class="notice-header">
+                    <h4>${notice.title}</h4>
+                    <span class="notice-date">${new Date(notice.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p class="notice-content">${notice.content}</p>
+                ${notice.fileUrl ? `
+                    <div class="notice-footer">
+                        <a href="${notice.fileUrl}" target="_blank" class="btn btn-secondary btn-small">
+                            <i class="fas fa-paperclip"></i> View Attachment
+                        </a>
+                    </div>` : ''}
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Error loading notices:', error);
+        container.innerHTML = '<p class="error-message">Unable to load notices. Please check your connection.</p>';
+    }
+}
+async function loadLeaveRequests() {
+    const tbody = document.getElementById('leaveRequestsTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+    try {
+        const teacherId = getTeacherId();
+        const response = await fetch(`/api/leave/all`); // Alternatively use /api/leave/teacher/${teacherId}
+        if (!response.ok) throw new Error('Failed to load leave requests');
+
+        const leaves = await response.json();
+        if (!leaves || leaves.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No leave requests found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = leaves.map(leave => `
+            <tr>
+                <td>${leave.studentName || 'N/A'}</td>
+                <td>${leave.className || 'N/A'}</td>
+                <td>${leave.fromDate || '-'}</td>
+                <td>${leave.toDate || '-'}</td>
+                <td><small>${leave.reason || '-'}</small></td>
+                <td>
+                    <span class="attendance-status ${leave.status?.toLowerCase() === 'approved' ? 'present' : leave.status?.toLowerCase() === 'rejected' ? 'absent' : 'late'}">
+                        ${leave.status || 'Pending'}
+                    </span>
+                </td>
+                <td>
+                    <div style="display:flex; gap:5px;">
+                        ${leave.status === 'Pending' ? `
+                            <button class="btn btn-success btn-small" onclick="approveLeave(${leave.id})">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-danger btn-small" onclick="rejectLeave(${leave.id})">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        ` : '<span style="font-size:0.8rem;color:#888;">Processed</span>'}
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        console.error('Leave requests error:', error);
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:red;">Error loading requests.</td></tr>';
+    }
+}
+
+async function approveLeave(id) {
+    if (!confirm('Are you sure you want to approve this leave?')) return;
+    try {
+        const res = await fetch(`/api/leave/approve/${id}`, { method: 'PUT' });
+        if (res.ok) {
+            alert("Leave approved successfully!");
+            loadLeaveRequests();
+        } else {
+            alert("Failed to approve leave.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error approving leave.");
+    }
+}
+
+async function rejectLeave(id) {
+    if (!confirm('Are you sure you want to reject this leave?')) return;
+    try {
+        const res = await fetch(`/api/leave/reject/${id}`, { method: 'PUT' });
+        if (res.ok) {
+            alert("Leave rejected successfully!");
+            loadLeaveRequests();
+        } else {
+            alert("Failed to reject leave.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error rejecting leave.");
+    }
+}

@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5">
     <title>Attendify | Smart Attendance Management System</title>
     <!-- Google Font & modern icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap"
+        rel="stylesheet">
     <!-- Font Awesome 6 (free) for crisp icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <!-- AOS (Animate on Scroll) library for smooth scroll animations -->
@@ -91,8 +93,13 @@
         }
 
         @keyframes headerFloat {
-            0% { transform: translateY(0); }
-            100% { transform: translateY(-5px); }
+            0% {
+                transform: translateY(0);
+            }
+
+            100% {
+                transform: translateY(-5px);
+            }
         }
 
         .logo {
@@ -113,8 +120,13 @@
         }
 
         @keyframes rotateSlow {
-            from { transform: rotateY(0deg); }
-            to { transform: rotateY(360deg); }
+            from {
+                transform: rotateY(0deg);
+            }
+
+            to {
+                transform: rotateY(360deg);
+            }
         }
 
         .nav-btn {
@@ -181,7 +193,7 @@
             top: 0;
             left: 0;
             background: radial-gradient(circle at 20% 40%, rgba(212, 175, 55, 0.04) 0%, transparent 30%),
-                        radial-gradient(circle at 90% 70%, rgba(10, 47, 68, 0.05) 0%, transparent 40%);
+                radial-gradient(circle at 90% 70%, rgba(10, 47, 68, 0.05) 0%, transparent 40%);
             pointer-events: none;
         }
 
@@ -384,8 +396,13 @@
         }
 
         @keyframes floating {
-            0% { transform: perspective(1200px) rotateY(-7deg) rotateX(3deg) scale(0.98) translateY(0); }
-            100% { transform: perspective(1200px) rotateY(-7deg) rotateX(3deg) scale(0.98) translateY(-20px); }
+            0% {
+                transform: perspective(1200px) rotateY(-7deg) rotateX(3deg) scale(0.98) translateY(0);
+            }
+
+            100% {
+                transform: perspective(1200px) rotateY(-7deg) rotateX(3deg) scale(0.98) translateY(-20px);
+            }
         }
 
         .hero-card img {
@@ -415,15 +432,33 @@
         }
 
         @keyframes morph {
-            0%, 100% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
-            33% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
-            66% { border-radius: 30% 60% 40% 70% / 50% 60% 40% 50%; }
+
+            0%,
+            100% {
+                border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            }
+
+            33% {
+                border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+            }
+
+            66% {
+                border-radius: 30% 60% 40% 70% / 50% 60% 40% 50%;
+            }
         }
 
         @keyframes pulse-glow {
-            0% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.6); }
-            70% { box-shadow: 0 0 0 20px rgba(212, 175, 55, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
+            0% {
+                box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.6);
+            }
+
+            70% {
+                box-shadow: 0 0 0 20px rgba(212, 175, 55, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(212, 175, 55, 0);
+            }
         }
 
         /* ----- about section with premium split ----- */
@@ -843,20 +878,55 @@
 
         /* responsive */
         @media (max-width: 900px) {
-            .hero-grid { flex-direction: column; }
-            .about-grid { flex-direction: column-reverse; }
-            .hero-text h1 { font-size: 48px; }
-            header { margin: 10px 20px; padding: 14px 24px; }
-            .hero { padding: 20px 20px 60px; }
-            .footer-inner { flex-direction: column; gap: 30px; }
+            .hero-grid {
+                flex-direction: column;
+            }
+
+            .about-grid {
+                flex-direction: column-reverse;
+            }
+
+            .hero-text h1 {
+                font-size: 48px;
+            }
+
+            header {
+                margin: 10px 20px;
+                padding: 14px 24px;
+            }
+
+            .hero {
+                padding: 20px 20px 60px;
+            }
+
+            .footer-inner {
+                flex-direction: column;
+                gap: 30px;
+            }
         }
 
         @media (max-width: 600px) {
-            .hero-text h1 { font-size: 38px; }
-            .hero-stats { flex-wrap: wrap; gap: 25px; }
-            .section-header h2 { font-size: 40px; }
-            .cta-banner h3 { font-size: 36px; }
-            .footer-links a { display: block; margin: 15px 0; }
+            .hero-text h1 {
+                font-size: 38px;
+            }
+
+            .hero-stats {
+                flex-wrap: wrap;
+                gap: 25px;
+            }
+
+            .section-header h2 {
+                font-size: 40px;
+            }
+
+            .cta-banner h3 {
+                font-size: 36px;
+            }
+
+            .footer-links a {
+                display: block;
+                margin: 15px 0;
+            }
         }
     </style>
     <!-- AOS animation library -->
@@ -884,12 +954,13 @@
         <div class="hero-particles" id="particles"></div>
         <div class="hero-content">
             <div class="college-tag" data-aos="fade-right" data-aos-delay="100">
-                <i class="fas fa-lightbulb"></i> Project Showcase: Smart Attendance System
+                <i class="fas fa-lightbulb"></i> Project Showcase: Attendify - Smart Attendance System
             </div>
             <div class="hero-grid">
                 <div class="hero-text" data-aos="fade-up" data-aos-delay="200">
-                    <h1>Smart attendance workflow, <span>built for modern</span> institutions</h1>
-                    <p>Secure, paperless, and real-time attendance tracking with QR sessions, role-based access, and live reporting.</p>
+                    <h1>Smart Attendance Workflow <span>Built For Modern</span> Institutions!</h1>
+                    <p>Secure, Paperless and Real-time Attendance. Track With QR Sessions, Role-Based Access and Live
+                        Reporting.</p>
                     <div class="hero-cta-group">
                         <a href="public/login.html" class="hero-btn-primary">
                             <i class="fas fa-arrow-right-to-bracket"></i> Access Portal
@@ -929,16 +1000,18 @@
     <section class="about-section" id="about">
         <div class="about-grid">
             <div class="about-image" data-aos="fade-right" data-aos-duration="1100">
-                <img src="https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Attendance management system">
+                <img src="https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                    alt="Attendance management system">
             </div>
             <div class="about-content" data-aos="fade-left" data-aos-delay="100">
                 <span class="section-tag"><i class="far fa-gem"></i> Project Overview</span>
                 <h2>Smart Attendance System - Attendify</h2>
-                <p>Attendify is a full-stack attendance platform that digitizes classroom workflows using QR-based session marking, secure authentication, and centralized dashboards.</p>
+                <p>Attendify is a full-stack attendance platform that digitizes classroom workflows using QR-based
+                    session marking, secure authentication, and centralized dashboards.</p>
                 <div class="accred-badges">
                     <div class="badge"><i class="fas fa-qrcode"></i> QR attendance</div>
-                    <div class="badge"><i class="fas fa-user-shield"></i> role security</div>
-                    <div class="badge"><i class="fas fa-chart-line"></i> smart analytics</div>
+                    <div class="badge"><i class="fas fa-user-shield"></i> Role security</div>
+                    <div class="badge"><i class="fas fa-chart-line"></i> Smart analytics</div>
                 </div>
             </div>
         </div>
@@ -1003,7 +1076,8 @@
     <div class="container" style="max-width: 1400px; margin: 0 auto;">
         <div class="cta-banner" data-aos="zoom-in" data-aos-duration="900">
             <h3>Ready to run attendance digitally?</h3>
-            <p style="font-size: 20px; opacity: 0.9;">Use Attendify to reduce manual work and manage attendance with confidence.</p>
+            <p style="font-size: 20px; opacity: 0.9;">Use Attendify to reduce manual work and manage attendance with
+                confidence.</p>
             <a href="public/login.html" class="cta-link">
                 <i class="fas fa-arrow-right"></i> Open Login Portal
             </a>
@@ -1026,7 +1100,8 @@
         </div>
         <div class="copyright">
             Copyright 2026 Attendify - Smart Attendance System. All rights reserved.
-            <span style="display: block; margin-top: 12px; font-size: 14px;">Built for reliable, paperless, and secure attendance management.</span>
+            <span style="display: block; margin-top: 12px; font-size: 14px;">Built for reliable, paperless, and secure
+                attendance management.</span>
         </div>
     </footer>
 
@@ -1078,17 +1153,37 @@
     </script>
     <style>
         @keyframes floatParticle {
-            from { transform: translateY(0) translateX(0); }
-            to { transform: translateY(-100px) translateX(20px); }
+            from {
+                transform: translateY(0) translateX(0);
+            }
+
+            to {
+                transform: translateY(-100px) translateX(20px);
+            }
         }
-        .cursor-dot, .cursor-outline {
+
+        .cursor-dot,
+        .cursor-outline {
             pointer-events: none;
             position: fixed;
             transform: translate(-50%, -50%);
             z-index: 9999;
         }
-        .cursor-dot { width: 8px; height: 8px; background: #d4af37; border-radius: 50%; }
-        .cursor-outline { width: 40px; height: 40px; border: 2px solid rgba(212, 175, 55, 0.3); border-radius: 50%; transition: all 0.1s; }
+
+        .cursor-dot {
+            width: 8px;
+            height: 8px;
+            background: #d4af37;
+            border-radius: 50%;
+        }
+
+        .cursor-outline {
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(212, 175, 55, 0.3);
+            border-radius: 50%;
+            transition: all 0.1s;
+        }
     </style>
 </body>
 

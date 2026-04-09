@@ -57,7 +57,6 @@ public class TeacherService {
                     "Admin context or School Code required for teacher registration");
         }
 
-        // ensure every teacher has a role; default for self‑registration is TEACHER
         if (teacher.getRole() == null || teacher.getRole().isBlank()) {
             teacher.setRole("TEACHER");
         }
@@ -110,11 +109,6 @@ public class TeacherService {
         return null;
     }
 
-    // -------------------------
-    // Admin CRUD Methods (Add These)
-    // -------------------------
-
-    // Get all teachers (for admin dashboard)
     public List<Teacher> getAllTeachers() {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId != null) {
@@ -127,7 +121,6 @@ public class TeacherService {
         return repository.searchTeachersForAdmin(adminId, departmentId, q, pageable);
     }
 
-    // Get teacher by ID
     public Optional<Teacher> getTeacherById(Integer id) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId != null) {
@@ -136,7 +129,6 @@ public class TeacherService {
         return repository.findById(id);
     }
 
-    // Update teacher
     public Teacher updateTeacher(Integer id, Teacher teacherDetails) {
         Teacher teacher = getTeacherById(id)
                 .orElseThrow(() -> new RuntimeException("Teacher not found"));
@@ -144,7 +136,6 @@ public class TeacherService {
         if (teacherDetails.getName() != null && !teacherDetails.getName().isBlank()) {
             teacher.setName(teacherDetails.getName());
         }
-        // Only update department if explicitly provided (not null)
         if (teacherDetails.getDepartment() != null) {
             teacher.setDepartment(teacherDetails.getDepartment());
         }
@@ -154,12 +145,34 @@ public class TeacherService {
         if (teacherDetails.getMobilenumber() != null) {
             teacher.setMobilenumber(teacherDetails.getMobilenumber());
         }
-        // allow admin to change role too if passed
         if (teacherDetails.getRole() != null && !teacherDetails.getRole().isBlank()) {
             teacher.setRole(teacherDetails.getRole());
         }
         if (teacherDetails.getPassword() != null && !teacherDetails.getPassword().isBlank()) {
             teacher.setPassword(passwordService.encode(teacherDetails.getPassword()));
+        }
+
+        // Enhanced Profile Fields
+        if (teacherDetails.getPermanentAddress() != null) {
+            teacher.setPermanentAddress(teacherDetails.getPermanentAddress());
+        }
+        if (teacherDetails.getDateOfBirth() != null) {
+            teacher.setDateOfBirth(teacherDetails.getDateOfBirth());
+        }
+        if (teacherDetails.getEducation() != null) {
+            teacher.setEducation(teacherDetails.getEducation());
+        }
+        if (teacherDetails.getBio() != null) {
+            teacher.setBio(teacherDetails.getBio());
+        }
+        if (teacherDetails.getDateOfAppointment() != null) {
+            teacher.setDateOfAppointment(teacherDetails.getDateOfAppointment());
+        }
+        if (teacherDetails.getSpouseName() != null) {
+            teacher.setSpouseName(teacherDetails.getSpouseName());
+        }
+        if (teacherDetails.getSpouseContact() != null) {
+            teacher.setSpouseContact(teacherDetails.getSpouseContact());
         }
 
         return repository.save(teacher);
@@ -179,7 +192,6 @@ public class TeacherService {
         return repository.save(teacher);
     }
 
-    // Delete teacher
     public void deleteTeacher(Integer id) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId != null) {
@@ -194,10 +206,6 @@ public class TeacherService {
         }
     }
 
-    /**
-     * Save/update the browser fingerprint (device ID) for a teacher.
-     * Called automatically when teacher opens the dashboard.
-     */
     public void saveDeviceId(Integer teacherId, String deviceId) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)
@@ -209,7 +217,6 @@ public class TeacherService {
     }
 
     public void updatePhotoUrl(Integer teacherId, String photoUrl) {
-        // Try admin-scoped lookup first; fall back to plain lookup (self-service)
         Long adminId = AdminContextHolder.getAdminId();
         Teacher teacher;
         if (adminId != null) {
@@ -224,9 +231,6 @@ public class TeacherService {
         }
     }
 
-    /**
-     * Resolve the stored device ID for a teacher by their DB id.
-     */
     public Optional<String> getDeviceId(Integer teacherId) {
         Long adminId = AdminContextHolder.getAdminId();
         if (adminId == null)

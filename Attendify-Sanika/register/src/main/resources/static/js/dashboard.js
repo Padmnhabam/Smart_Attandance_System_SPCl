@@ -24,129 +24,135 @@ const role = (localStorage.getItem('studentRole') || localStorage.getItem('role'
 const token = (localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'));
 
 if (!user || role !== "student" || !token) {
-    // user not authenticated; redirect to login in same folder
     window.location.href = "login.html";
-
 }
 
-// ----------------- UPDATE WELCOME & PROFILE INFO -----------------
-document.getElementById("welcomeText").innerText = "Welcome, " + user.name + " 👋";
-document.getElementById("profileName").innerText = user.name;
-document.getElementById("profileEmail").innerText = user.email;
-document.getElementById("profileRoll").innerText = user.rollNo;
-const displayClassName = user.classMaster ? user.classMaster.className : (user.className || "-");
-const displayDivName = user.divisionMaster ? user.divisionMaster.divisionName : (user.divisionName || "");
-document.getElementById("profileClass").innerText = displayClassName + (displayDivName ? " " + displayDivName : "");
+// ----------------- INITIALIZATION -----------------
+document.addEventListener("DOMContentLoaded", function () {
+    // Basic UI Setup
+    document.getElementById("welcomeText").innerText = "Welcome, " + user.name + " 👋";
+    document.getElementById("profileName").innerText = user.name;
+    document.getElementById("profileEmail").innerText = user.email;
+    document.getElementById("profileRoll").innerText = user.rollNo;
+    
+    const displayClassName = user.classMaster ? user.classMaster.className : (user.className || "-");
+    const displayDivName = user.divisionMaster ? user.divisionMaster.divisionName : (user.divisionName || "");
+    document.getElementById("profileClass").innerText = displayClassName + (displayDivName ? " " + displayDivName : "");
 
-// ----------------- FETCH DASHBOARD DATA -----------------
-fetch(`/api/student/dashboard/${user.id}`)
-    .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch dashboard data");
-        return res.json();
-    })
-    .then(data => {
-        // Update main cards
-        document.querySelector(".card.blue p").innerText = data.totalClasses;
-        document.querySelector(".card.green p").innerText = data.present;
-        document.querySelector(".card.red p").innerText = data.absent;
-        document.querySelector(".card.purple p").innerText = data.percentage + "%";
-        document.getElementById("attendancePercent").innerText = data.percentage + "%";
+    // Load Data
+    fetchDashboardData();
+    fetchAttendanceRecords();
+    fetchSubjectSummary();
+    checkAttendanceStatus();
+    loadStudentLeaves();
+    loadClassTeachers();
+    loadStudentNotes();
+    setupStudentMobileSidebar();
+    
+    // Profile Setup Logic
+    checkProfileSetup();
+});
 
+// ----------------- DASHBOARD DATA -----------------
+function fetchDashboardData() {
+    fetch(`/api/student/dashboard/${user.id}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch dashboard data");
+            return res.json();
+        })
+        .then(data => {
+            document.querySelector(".card.blue p").innerText = data.totalClasses;
+            document.querySelector(".card.green p").innerText = data.present;
+            document.querySelector(".card.red p").innerText = data.absent;
+            document.querySelector(".card.purple p").innerText = data.percentage + "%";
+            document.getElementById("attendancePercent").innerText = data.percentage + "%";
 
+            const statCards = document.querySelectorAll(".attendance-stats .stat-card");
+            if (statCards.length >= 2) {
+                statCards[0].querySelector(".stat-value").innerText = data.present;
+                statCards[0].querySelector(".stat-progress-bar.present").style.width = data.percentage + "%";
+                statCards[1].querySelector(".stat-value").innerText = data.absent;
+                statCards[1].querySelector(".stat-progress-bar.absent").style.width = (100 - data.percentage) + "%";
+            }
 
-        // Update Attendance Stats Cards
-        const statCards = document.querySelectorAll(".attendance-stats .stat-card");
+            loadChart(data.present, data.absent);
 
-        // Present
-        statCards[0].querySelector(".stat-value").innerText = data.present;
-        statCards[0].querySelector(".stat-progress-bar.present").style.width = data.percentage + "%";
-
-        // Absent
-        statCards[1].querySelector(".stat-value").innerText = data.absent;
-        statCards[1].querySelector(".stat-progress-bar.absent").style.width = (100 - data.percentage) + "%";
-
-        // Load chart
-        loadChart(data.present, data.absent);
-
-        // Fetch settings to check threshold color
-        fetch("/api/settings")
-            .then(res => res.json())
-            .then(setting => {
-                const threshold = setting.attendanceThreshold;
-                if (data.percentage < threshold) {
-                    document.querySelector(".card.purple p").style.color = "red";
-                    document.getElementById("attendancePercent").style.color = "red";
-                } else {
-                    document.querySelector(".card.purple p").style.color = "green";
-                    document.getElementById("attendancePercent").style.color = "green";
-                }
-            })
-            .catch(err => console.error("Could not fetch settings:", err));
-
-    })
-    .catch(err => {
-        console.error(err);
-        alert("Could not load dashboard data. Please try again later.");
-    });
-
-// ----------------- FETCH ATTENDANCE TABLE -----------------
-fetch(`/api/student/attendance/${user.id}`)
-    .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch attendance records");
-        return res.json();
-    })
-    .then(records => {
-        const tbody = document.querySelector("#attendance table tbody");
-        tbody.innerHTML = ""; // clear previous rows
-
-        records.forEach(r => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${r.date}</td>
-                <td>${r.subject}</td>
-                <td class="${r.status.toLowerCase()}">${r.status}</td>
-            `;
-            tbody.appendChild(tr);
+            fetch("/api/settings")
+                .then(res => res.json())
+                .then(setting => {
+                    const threshold = setting.attendanceThreshold;
+                    const color = data.percentage < threshold ? "red" : "green";
+                    document.querySelector(".card.purple p").style.color = color;
+                    document.getElementById("attendancePercent").style.color = color;
+                })
+                .catch(err => console.error("Could not fetch settings:", err));
+        })
+        .catch(err => {
+            console.error(err);
         });
+}
 
-        setupFilters(); // initialize filter buttons after loading
-    })
-    .catch(err => {
-        console.error(err);
-        alert("Could not load attendance records. Please try again later.");
-    });
+function fetchAttendanceRecords() {
+    fetch(`/api/student/attendance/${user.id}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch attendance records");
+            return res.json();
+        })
+        .then(records => {
+            const tbody = document.querySelector("#monthlyAttendanceTable tbody");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            if (!Array.isArray(records) || records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#64748b;">No attendance records available.</td></tr>`;
+                setupFilters();
+                return;
+            }
+            records.forEach(r => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${r.date}</td>
+                    <td>${r.subject}</td>
+                    <td class="${r.status.toLowerCase()}">${r.status}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            setupFilters();
+        })
+        .catch(err => console.error(err));
+}
 
-// ----------------- FETCH SUBJECT-WISE SUMMARY -----------------
-fetch(`/api/student/summary/subject/${user.id}`)
-    .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch subject summary");
-        return res.json();
-    })
-    .then(summaries => {
-        const tbody = document.querySelector("#subjectSummaryTable tbody");
-        if (!tbody) return;
-        tbody.innerHTML = "";
+function fetchSubjectSummary() {
+    fetch(`/api/student/summary/subject/${user.id}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch subject summary");
+            return res.json();
+        })
+        .then(summaries => {
+            const tbody = document.querySelector("#subjectSummaryTable tbody");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            if (!Array.isArray(summaries) || summaries.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#64748b;">No subject-wise summary available.</td></tr>`;
+                return;
+            }
+            summaries.forEach(s => {
+                const tr = document.createElement("tr");
+                const perc = s.percentage.toFixed(1);
+                tr.innerHTML = `
+                    <td>${s.subject}</td>
+                    <td>${s.presentCount}</td>
+                    <td>${s.totalClasses}</td>
+                    <td class="${s.percentage < 75 ? 'absent' : 'present'}">${perc}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(err => console.error(err));
+}
 
-        summaries.forEach(s => {
-            const tr = document.createElement("tr");
-            const perc = s.percentage.toFixed(1);
-            tr.innerHTML = `
-                <td>${s.subject}</td>
-                <td>${s.presentCount}</td>
-                <td>${s.totalClasses}</td>
-                <td class="${s.percentage < 75 ? 'absent' : 'present'}">${perc}%</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    })
-    .catch(err => {
-        console.error("Subject summary error:", err);
-    });
-
-// ----------------- LOAD CHART -----------------
 function loadChart(present, absent) {
     const ctx = document.getElementById("attendanceChart");
-
+    if (!ctx) return;
     new Chart(ctx, {
         type: "doughnut",
         data: {
@@ -164,15 +170,44 @@ function loadChart(present, absent) {
     });
 }
 
-// ----------------- SECTION SWITCH -----------------
-function showSection(id) {
-    document.querySelectorAll(".section").forEach(sec =>
-        sec.classList.add("hidden")
-    );
-    document.getElementById(id).classList.remove("hidden");
-    closeStudentSidebar();
+// ----------------- NOTES -----------------
+function loadStudentNotes() {
+    const notesList = document.getElementById("notesList");
+    if (!notesList) return;
+
+    fetch(`/api/notes/student/${user.id}`)
+        .then(res => res.json())
+        .then(data => {
+            notesList.innerHTML = "";
+            if (data.length === 0) {
+                notesList.innerHTML = `<div style="text-align:center; padding:20px; color:#666;">No notes available for your class.</div>`;
+                return;
+            }
+            data.forEach(note => {
+                notesList.innerHTML += `
+                    <div class="note-card">
+                        <div>
+                            <div class="note-title">${note.fileName}</div>
+                            <div class="note-subject">Subject: ${note.subject}</div>
+                        </div>
+                        <a href="${note.fileUrl}" target="_blank" class="note-btn">📥 Download</a>
+                    </div>
+                `;
+            });
+        })
+        .catch(err => console.error("Notes error:", err));
 }
 
+// ----------------- SECTION SWITCHING -----------------
+function showSection(id) {
+    document.querySelectorAll(".section").forEach(sec => sec.classList.add("hidden"));
+    document.getElementById(id).classList.remove("hidden");
+    closeStudentSidebar();
+
+    if (id === 'notices') loadStudentNotices();
+}
+
+// ----------------- MOBILE SIDEBAR -----------------
 function closeStudentSidebar() {
     const sidebar = document.getElementById("studentSidebar");
     const overlay = document.getElementById("studentSidebarOverlay");
@@ -189,10 +224,10 @@ function setupStudentMobileSidebar() {
     if (!toggleBtn || !sidebar || !overlay) return;
 
     toggleBtn.addEventListener("click", () => {
-        const shouldOpen = !sidebar.classList.contains("sidebar-open");
-        sidebar.classList.toggle("sidebar-open", shouldOpen);
-        overlay.classList.toggle("show", shouldOpen);
-        document.body.classList.toggle("menu-open", shouldOpen);
+        const isOpen = sidebar.classList.contains("sidebar-open");
+        sidebar.classList.toggle("sidebar-open", !isOpen);
+        overlay.classList.toggle("show", !isOpen);
+        document.body.classList.toggle("menu-open", !isOpen);
     });
 
     overlay.addEventListener("click", closeStudentSidebar);
@@ -203,31 +238,35 @@ function setupStudentMobileSidebar() {
     });
 }
 
-// ----------------- LOGOUT -----------------
-function logout() {
-    localStorage.removeItem('studentAuthToken'); localStorage.removeItem('studentLoggedUser'); localStorage.removeItem('studentRole'); localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
-    window.location.href = "login.html";
-}
-
-// ----------------- ATTENDANCE FILTERS -----------------
+// ----------------- FILTERS -----------------
 function setupFilters() {
-    const buttons = document.querySelectorAll(".filter-btn");
+    const buttons = document.querySelectorAll("#attendance .filter-btn");
+    if (!buttons.length) return;
+
+    const rows = () => document.querySelectorAll("#monthlyAttendanceTable tbody tr");
     buttons.forEach(btn => {
+        if (btn.dataset.boundClick === "1") return;
+        btn.dataset.boundClick = "1";
         btn.addEventListener("click", () => {
-            const filter = btn.innerText.toLowerCase(); // "all", "present", "absent", "this month"
+            const filter = btn.innerText.toLowerCase().trim();
             buttons.forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
 
-            document.querySelectorAll("#attendance table tbody tr").forEach(tr => {
-                const status = tr.children[2].innerText.toLowerCase();
-                const date = new Date(tr.children[0].innerText);
+            rows().forEach(tr => {
+                if (tr.children.length < 3) {
+                    tr.style.display = "";
+                    return;
+                }
+                const status = (tr.children[2].innerText || "").toLowerCase().trim();
+                const dateText = (tr.children[0].innerText || "").trim();
+                const recordDate = new Date(dateText);
                 const now = new Date();
 
                 if (filter === "all") {
                     tr.style.display = "";
                 } else if (filter === "this month") {
-                    tr.style.display = (date.getMonth() === now.getMonth() &&
-                        date.getFullYear() === now.getFullYear()) ? "" : "none";
+                    const validDate = !Number.isNaN(recordDate.getTime());
+                    tr.style.display = (validDate && recordDate.getMonth() === now.getMonth() && recordDate.getFullYear() === now.getFullYear()) ? "" : "none";
                 } else {
                     tr.style.display = (status === filter) ? "" : "none";
                 }
@@ -236,85 +275,25 @@ function setupFilters() {
     });
 }
 
-
-
+// ----------------- NOTIFICATIONS -----------------
 async function checkAttendanceStatus() {
     try {
-        const user = JSON.parse((localStorage.getItem('studentLoggedUser') || localStorage.getItem('loggedUser')));
-        const studentId = user.id;
-
-        const response = await fetch(`/api/attendance/check/${studentId}`);
+        const response = await fetch(`/api/attendance/check/${user.id}`);
         const message = await response.text();
-
-        showAttendanceNotification(message);
-
-    } catch (error) {
-        console.error("Error checking attendance:", error);
-    }
-}
-function showAttendanceNotification(message) {
-
-    const notificationDiv = document.getElementById("attendanceAlert");
-
-    notificationDiv.innerText = message;
-
-    if (message.includes("Warning")) {
-        notificationDiv.style.backgroundColor = "#ffcccc";
-        notificationDiv.style.color = "red";
-    } else {
-        notificationDiv.style.backgroundColor = "#ccffcc";
-        notificationDiv.style.color = "green";
-    }
-}
-document.addEventListener("DOMContentLoaded", function () {
-    checkAttendanceStatus();
-});
-
-const notesList = document.getElementById("notesList");
-
-fetch(`/api/notes/student/${user.id}`)
-    .then(res => res.json())
-    .then(data => {
-
-        notesList.innerHTML = "";
-
-        if (data.length === 0) {
-            notesList.innerHTML = `<div style="text-align:center; padding:20px; color:#666;">No notes available for your class.</div>`;
-            return;
+        const alertDiv = document.getElementById("attendanceAlert");
+        if (alertDiv) {
+            alertDiv.innerText = message;
+            alertDiv.style.backgroundColor = message.includes("Warning") ? "#ffcccc" : "#ccffcc";
+            alertDiv.style.color = message.includes("Warning") ? "red" : "green";
         }
-
-        data.forEach(note => {
-
-            const noteCard = `
-                <div class="note-card">
-                    <div>
-                        <div class="note-title">${note.fileName}</div>
-                        <div class="note-subject">Subject: ${note.subject}</div>
-                    </div>
-                    <a href="${note.fileUrl}" 
-                       target="_blank" 
-                       class="note-btn">
-                       📥 Download
-                    </a>
-                </div>
-            `;
-
-            notesList.innerHTML += noteCard;
-        });
-    });
-
-// ================== LEAVE SYSTEM ==================
-
-function submitLeave() {
-
-    if (!user || !user.id) {
-        alert("Session expired. Please login again.");
-        window.location.href = "login.html";
-        return;
+    } catch (error) {
+        console.error("Attendance check error:", error);
     }
+}
 
+// ----------------- LEAVE SYSTEM -----------------
+function submitLeave() {
     const teacherId = document.getElementById("leaveTeacher").value;
-
     const leaveData = {
         studentId: user.id,
         studentName: user.name,
@@ -325,128 +304,162 @@ function submitLeave() {
         teacher: teacherId ? { id: parseInt(teacherId) } : null
     };
 
-    if (!leaveData.fromDate) { alert("Please select 'From Date'"); return; }
-    if (!leaveData.toDate) { alert("Please select 'To Date'"); return; }
-    if (!leaveData.reason) { alert("Please enter a 'Reason'"); return; }
-    if (!teacherId) { alert("Please select a 'Teacher'"); return; }
+    if (!leaveData.fromDate || !leaveData.toDate || !leaveData.reason || !teacherId) {
+        alert("Please fill all fields.");
+        return;
+    }
 
-    fetch("/api/leave/submit", {   // ✅ corrected (no 'leaves')
+    fetch("/api/leave/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(leaveData)
     })
-        .then(res => res.text())
-        .then(msg => {
-            alert(msg);
-            //   loadStudentLeaves();
-        })
-        .catch(err => console.error("Submit error:", err));
+    .then(res => res.text())
+    .then(msg => {
+        alert(msg);
+        loadStudentLeaves();
+        document.getElementById("leaveRequestForm")?.reset();
+    })
+    .catch(err => console.error("Submit error:", err));
 }
-
 
 function loadStudentLeaves() {
-
-    if (!user || !user.id) {
-        console.error("User not found");
-        return;
-    }
-
-    fetch(`/api/leave/student/${user.id}`)  // ✅ use user.id
-        .then(res => {
-            if (!res.ok) throw new Error("Failed to fetch leave data");
-            return res.json();
-        })
+    fetch(`/api/leave/student/${user.id}`)
+        .then(res => res.json())
         .then(data => {
-
             const tbody = document.querySelector("#leaveTable tbody");
+            if (!tbody) return;
             tbody.innerHTML = "";
-
             if (!Array.isArray(data) || data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4">No Leave Requests</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No Leave Requests found</td></tr>`;
                 return;
             }
-
             data.forEach(leave => {
+                const statusClass = leave.status?.toLowerCase() === 'approved' ? 'status-approved' : 
+                                    leave.status?.toLowerCase() === 'rejected' ? 'status-rejected' : 'status-pending';
                 tbody.innerHTML += `
-          <tr>
-            <td>${leave.fromDate}</td>
-            <td>${leave.toDate}</td>
-            <td>${leave.reason}</td>
-            <td>${leave.status}</td>
-          </tr>
-        `;
+                    <tr>
+                        <td>${leave.fromDate}</td>
+                        <td>${leave.toDate}</td>
+                        <td>${leave.reason}</td>
+                        <td><span class="${statusClass}">${leave.status || 'Pending'}</span></td>
+                    </tr>
+                `;
             });
-
         })
-        .catch(err => console.error("Student load error:", err));
+        .catch(err => console.error("Load leaves error:", err));
 }
-
-document.addEventListener("DOMContentLoaded", function () {
-    checkAttendanceStatus();
-    loadStudentLeaves();
-    loadClassTeachers();
-    setupStudentMobileSidebar();
-
-    // ----------------- PROFILE SETUP LOGIC -----------------
-    // Check if profile is setup (using both user object and current UI values as safety)
-    const currentClass = document.getElementById("profileClass").textContent.trim();
-    const hasClass = (user.classMaster && user.classMaster.id) || user.classId;
-    const hasDiv = (user.divisionMaster && user.divisionMaster.id) || user.divisionId;
-
-    let needsSetup = (!hasClass || !hasDiv || currentClass === "-");
-
-    if (needsSetup) {
-        const setupModal = document.getElementById("setupModal");
-        if (setupModal) {
-            setupModal.style.display = "flex";
-            setupModal.classList.remove("hidden");
-            loadSetupClasses();
-        }
-    } else {
-        const modal = document.getElementById("setupModal");
-        if (modal) {
-            modal.style.display = "none";
-            modal.classList.add("hidden");
-        }
-    }
-
-    const setupClassMaster = document.getElementById("setupClassMaster");
-    if (setupClassMaster) {
-        setupClassMaster.addEventListener("change", function () {
-            loadSetupDivisions(this.value);
-        });
-    }
-
-    const saveSetupBtn = document.getElementById("saveSetupBtn");
-    if (saveSetupBtn) {
-        saveSetupBtn.addEventListener("click", saveSetup);
-    }
-});
 
 async function loadClassTeachers() {
     const classId = user.classMaster ? user.classMaster.id : user.classId;
-    const divisionId = user.divisionMaster ? user.divisionMaster.id : user.divisionId;
-
-    if (!user || !classId || !divisionId) return;
+    const divId = user.divisionMaster ? user.divisionMaster.id : user.divisionId;
+    if (!classId || !divId) return;
 
     try {
-        const res = await fetch(`/api/master/classes/${classId}/divisions/${divisionId}/teachers`);
-        if (!res.ok) throw new Error("Failed to load teachers");
+        const res = await fetch(`/api/master/classes/${classId}/divisions/${divId}/teachers`);
         const teachers = await res.json();
         const select = document.getElementById("leaveTeacher");
         if (!select) return;
-
-        // Keep the first option
         select.innerHTML = '<option value="">Select Teacher</option>';
-
         teachers.forEach(t => {
             const opt = document.createElement("option");
             opt.value = t.id;
             opt.textContent = t.name;
             select.appendChild(opt);
         });
-    } catch (err) {
-        console.error("Error loading teachers:", err);
+    } catch (err) { console.error("Load teachers error:", err); }
+}
+
+// ----------------- NOTICES -----------------
+function loadStudentNotices() {
+    const container = document.getElementById('studentNoticesContainer');
+    if (!container) return;
+    container.innerHTML = '<p style="text-align:center; padding: 20px;">Loading notices...</p>';
+
+    fetch('/api/notices/all')
+        .then(res => res.json())
+        .then(notices => {
+            container.innerHTML = '';
+            if (notices.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center; padding: 40px;">
+                        <i class="fas fa-bullhorn" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 20px;"></i>
+                        <h3 style="color: #64748b;">No notices posted yet</h3>
+                    </div>`;
+                return;
+            }
+
+            notices.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            notices.forEach(notice => {
+                const date = new Date(notice.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+                const fileLink = (notice.fileUrl) ? `
+                    <div class="notice-footer">
+                        <a href="${notice.fileUrl}" target="_blank" class="btn-download">
+                            <i class="fas fa-paperclip"></i> Download Attachment
+                        </a>
+                    </div>` : '';
+
+                container.innerHTML += `
+                    <div class="notice-card">
+                        <div class="notice-header">
+                            <h4>${notice.title}</h4>
+                            <span class="notice-date">${date}</span>
+                        </div>
+                        <div class="notice-body">${notice.content}</div>
+                        ${fileLink}
+                    </div>`;
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            container.innerHTML = '<p style="color: red; text-align: center;">Failed to load notices.</p>';
+        });
+}
+
+// ----------------- PROFILE SETUP -----------------
+function getUserClassId() {
+    return (user && (
+        (user.classMaster && user.classMaster.id) ||
+        user.classId ||
+        user.classMasterId ||
+        user.class_id
+    ));
+}
+
+function getUserDivisionId() {
+    return (user && (
+        (user.divisionMaster && user.divisionMaster.id) ||
+        user.divisionId ||
+        user.divisionMasterId ||
+        user.division_id
+    ));
+}
+
+function checkProfileSetup() {
+    const currentClass = (document.getElementById("profileClass")?.textContent || "").trim();
+    const hasClass = getUserClassId();
+    const hasDiv = getUserDivisionId();
+    
+    if (!hasClass || !hasDiv || currentClass === "-") {
+        const modal = document.getElementById("setupModal");
+        if (modal) {
+            modal.style.display = "flex";
+            modal.classList.remove("hidden");
+            loadSetupClasses();
+
+            const classSelect = document.getElementById("setupClassMaster");
+            const saveBtn = document.getElementById("saveSetupBtn");
+            if (classSelect && !classSelect.dataset.boundChange) {
+                classSelect.addEventListener("change", function() {
+                    loadSetupDivisions(this.value);
+                });
+                classSelect.dataset.boundChange = "1";
+            }
+            if (saveBtn && !saveBtn.dataset.boundClick) {
+                saveBtn.addEventListener("click", saveSetup);
+                saveBtn.dataset.boundClick = "1";
+            }
+        }
     }
 }
 
@@ -456,23 +469,21 @@ async function loadSetupClasses() {
         const classes = await res.json();
         const select = document.getElementById("setupClassMaster");
         if (!select) return;
+        select.innerHTML = '<option value="">Select Class</option>';
         classes.forEach(c => {
             const opt = document.createElement("option");
             opt.value = c.id;
             opt.textContent = c.className;
             select.appendChild(opt);
         });
-    } catch (err) { console.error("Error loading classes:", err); }
+    } catch (err) { console.error(err); }
 }
 
 async function loadSetupDivisions(classId) {
     const select = document.getElementById("setupDivisionMaster");
     if (!select) return;
     select.innerHTML = '<option value="">Select Division</option>';
-    if (!classId) {
-        select.disabled = true;
-        return;
-    }
+    if (!classId) { select.disabled = true; return; }
     try {
         const res = await fetch(`/api/master/classes/${classId}/divisions`);
         const divs = await res.json();
@@ -483,7 +494,7 @@ async function loadSetupDivisions(classId) {
             select.appendChild(opt);
         });
         select.disabled = false;
-    } catch (err) { console.error("Error loading divisions:", err); }
+    } catch (err) { console.error(err); }
 }
 
 async function saveSetup() {
@@ -492,47 +503,28 @@ async function saveSetup() {
     const errorEl = document.getElementById("setupError");
 
     if (!classId || !divId) {
-        errorEl.textContent = "Please select both Class and Division.";
-        errorEl.style.display = "block";
+        if (errorEl) { errorEl.textContent = "Please select both."; errorEl.style.display = "block"; }
         return;
     }
 
     try {
-        const payload = {
-            classMaster: { id: parseInt(classId) },
-            divisionMaster: { id: parseInt(divId) }
-        };
-
         const res = await fetch(`/api/users/${user.id}/class-division`, {
             method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-                ...((localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken')) ? { "Authorization": `Bearer ${(localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'))}` } : {})
-            },
-            body: JSON.stringify(payload)
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ classMaster: { id: parseInt(classId) }, divisionMaster: { id: parseInt(divId) } })
         });
-
         if (!res.ok) throw new Error("Failed to update profile");
-
         const updatedUser = await res.json();
-
-        // Ensure role is preserved in localStorage if not in response
-        const currentRole = (localStorage.getItem('studentRole') || localStorage.getItem('role')) || "student";
-        const currentToken = (localStorage.getItem('studentAuthToken') || localStorage.getItem('authToken'));
-
         localStorage.setItem('studentLoggedUser', JSON.stringify(updatedUser));
-        localStorage.setItem('studentRole', currentRole);
-        if (currentToken) localStorage.setItem('studentAuthToken', currentToken);
-
-        // Success - hide modal and refresh or update UI
-        document.getElementById("setupModal").style.display = "none";
-        document.getElementById("setupModal").classList.add("hidden");
-
-        // Reload page to reflect changes properly and refresh all dashboard data
         window.location.reload();
     } catch (err) {
-        errorEl.textContent = err.message || "An error occurred.";
-        errorEl.style.display = "block";
+        if (errorEl) { errorEl.textContent = err.message; errorEl.style.display = "block"; }
     }
 }
 
+// ----------------- LOGOUT -----------------
+function logout() {
+    localStorage.removeItem('studentAuthToken'); localStorage.removeItem('studentLoggedUser'); localStorage.removeItem('studentRole'); 
+    localStorage.removeItem('authToken'); localStorage.removeItem('loggedUser'); localStorage.removeItem('role');
+    window.location.href = "login.html";
+}

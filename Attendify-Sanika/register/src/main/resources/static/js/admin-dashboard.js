@@ -26,17 +26,36 @@ window.fetch = (input, init = {}) => {
 // Show Section
 // =========================
 function showSection(section) {
-    const sections = ['dashboard', 'students', 'teachers', 'classes', 'attendance', 'reports', 'settings', 'timetable', 'masterdata'];
+    const sections = ['dashboard', 'students', 'teachers', 'classes', 'attendance', 'reports', 'notices', 'settings', 'timetable', 'masterdata'];
     sections.forEach(s => {
         const el = document.getElementById(`${s}-section`);
         if (el) el.style.display = s === section ? 'block' : 'none';
     });
+
+    const titleMap = {
+        dashboard: { title: 'Dashboard Overview', subtitle: 'Track teachers & students in real-time' },
+        teachers: { title: 'Teacher Management', subtitle: 'Manage faculty records and department assignments' },
+        students: { title: 'Student Management', subtitle: 'View and filter students by class and division' },
+        masterdata: { title: 'Master Data', subtitle: 'Manage departments, classes, divisions, subjects and mappings' },
+        timetable: { title: 'Timetable Management', subtitle: 'Define period slots and teacher timetable structure' },
+        reports: { title: 'Reports', subtitle: 'Generate attendance reports and export monthly summaries' },
+        notices: { title: 'Notices', subtitle: 'Create and manage institution-wide announcements' },
+        settings: { title: 'System Settings', subtitle: 'Configure organization profile and attendance rules' }
+    };
+    const pageTitle = document.getElementById('pageTitle');
+    const pageSubtitle = document.getElementById('pageSubtitle');
+    const meta = titleMap[section];
+    if (meta) {
+        if (pageTitle) pageTitle.textContent = meta.title;
+        if (pageSubtitle) pageSubtitle.textContent = meta.subtitle;
+    }
 
     if (section === 'reports') loadReports();
     if (section === 'timetable') loadTimetableSection();
     if (section === 'masterdata') switchMdTab('dept');
     if (section === 'students') initStudentsSection();
     if (section === 'teachers') initTeachersSection();
+    if (section === 'notices') loadNotices();
 
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelector(`.nav-link[onclick="showSection('${section}')"]`)?.classList.add('active');
@@ -1375,3 +1394,88 @@ document.addEventListener("DOMContentLoaded", function () {
     loadLowAttendanceAlerts();
     // switchDataTab('teacher'); // Undefined function removed
 });
+
+// =========================
+// NOTICES LOGIC
+// =========================
+async function postNotice(e) {
+    e.preventDefault();
+    const title = (document.getElementById('noticeTitle')?.value || '').trim();
+    const content = (document.getElementById('noticeContent')?.value || '').trim();
+    const fileInput = document.getElementById('noticeFile');
+    const file = fileInput?.files?.[0] || null;
+
+    if (!title || !content) {
+        alert('Please enter both title and content.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('content', content);
+    if (file) {
+        formData.append('file', file);
+    }
+
+    try {
+        const res = await fetch('/api/notices/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const message = await res.text();
+        if (!res.ok) throw new Error(message || `Failed to post notice (HTTP ${res.status})`);
+        alert(message || "Notice posted successfully!");
+        document.getElementById('noticeForm').reset();
+        loadNotices();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+}
+
+async function loadNotices() {
+    const tbody = document.getElementById('noticesTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
+
+    try {
+        const res = await fetch('/api/notices/all');
+        const notices = await res.json();
+
+        if (notices.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No notices posted yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = notices.map(n => `
+            <tr>
+                <td>${new Date(n.createdAt).toLocaleDateString()}</td>
+                <td>
+                    <strong>${n.title}</strong><br>
+                    <small style="color:#64748b">${n.content.substring(0, 50)}${n.content.length > 50 ? '...' : ''}</small>
+                </td>
+                <td>
+                    ${n.fileUrl ? `<a href="${n.fileUrl}" target="_blank" class="view-btn" style="background:#4f46e5; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem; text-decoration:none;"><i class="fas fa-file-download"></i> Download</a>` : '-'}
+                </td>
+                <td class="action-icons">
+                    <i class="fas fa-trash delete-icon" onclick="deleteNotice(${n.id})" title="Delete Notice"></i>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:red;">Error loading notices: ${err.message}</td></tr>`;
+    }
+}
+
+async function deleteNotice(id) {
+    if (!confirm("Are you sure you want to delete this notice?")) return;
+
+    try {
+        const res = await fetch(`/api/notices/delete/${id}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error("Failed to delete notice");
+        loadNotices();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+}

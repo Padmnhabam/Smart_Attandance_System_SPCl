@@ -1,6 +1,6 @@
 package com.example.attendance_Backend.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -13,7 +13,7 @@ public class TeacherTimetable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", nullable = false)
-    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler", "assignments" })
+    @JsonIgnore
     private Teacher teacher;
 
     @ManyToOne(fetch = FetchType.EAGER)

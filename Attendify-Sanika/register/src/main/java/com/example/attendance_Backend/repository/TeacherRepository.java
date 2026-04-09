@@ -67,6 +67,9 @@ public interface TeacherRepository extends JpaRepository<Teacher, Integer> {
 
     Optional<Teacher> findByIdAndAdminId(Integer id, Long adminId);
 
+    @Query("SELECT t.admin.id FROM Teacher t WHERE t.id = :teacherId")
+    Optional<Long> findAdminIdByTeacherId(@Param("teacherId") Integer teacherId);
+
     long countByAdminId(Long adminId);
 
     Optional<Teacher> findByEmailAndPasswordAndAdminId(String email, String password, Long adminId);

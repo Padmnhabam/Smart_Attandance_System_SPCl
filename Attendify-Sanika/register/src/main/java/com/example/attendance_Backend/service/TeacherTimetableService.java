@@ -45,7 +45,7 @@ public class TeacherTimetableService {
     }
 
     public List<TeacherTimetable> getFullTimetable(int teacherId) {
-        Long adminId = AdminContextHolder.getAdminId();
+        Long adminId = resolveAdminIdForTeacher(teacherId);
         if (adminId != null) {
             return ttRepo.findByTeacherIdAndAdminId(teacherId, adminId);
         }
@@ -62,7 +62,7 @@ public class TeacherTimetableService {
                 .getDisplayName(TextStyle.FULL, Locale.ENGLISH)
                 .toUpperCase(); // e.g. MONDAY
 
-        Long adminId = AdminContextHolder.getAdminId();
+        Long adminId = resolveAdminIdForTeacher(teacherId);
         if (adminId != null) {
             return ttRepo.findByTeacherIdAndDayAndAdminId(teacherId, today, adminId);
         }
@@ -72,47 +72,81 @@ public class TeacherTimetableService {
     /** Save or update a single timetable cell */
     public TeacherTimetable saveSlot(int teacherId, int slotId, String day,
             Map<String, Object> body) {
-        Long adminId = AdminContextHolder.getAdminId();
-        if (adminId == null)
-            throw new RuntimeException("Admin context required");
+        String normalizedDay = day.toUpperCase();
+        Long adminId = resolveAdminIdForTeacher(teacherId);
 
-        TeacherTimetable tt = ttRepo
-                .findByTeacherIdAndSlotIdAndDayOfWeekAndAdminId(teacherId, slotId, day.toUpperCase(), adminId)
-                .orElse(new TeacherTimetable());
+        TeacherTimetable tt = (adminId != null)
+                ? ttRepo.findByTeacherIdAndSlotIdAndDayOfWeekAndAdminId(teacherId, slotId, normalizedDay, adminId)
+                        .or(() -> ttRepo.findByTeacherIdAndSlotIdAndDayOfWeek(teacherId, slotId, normalizedDay))
+                        .orElse(new TeacherTimetable())
+                : ttRepo.findByTeacherIdAndSlotIdAndDayOfWeek(teacherId, slotId, normalizedDay)
+                        .orElse(new TeacherTimetable());
 
-        Teacher teacher = teacherRepo.findByIdAndAdminId(teacherId, adminId)
-                .orElseThrow(() -> new RuntimeException("Teacher not found or unauthorized"));
-        TimetableStructure slot = structureRepo.findByIdAndAdminId(slotId, adminId)
-                .orElseThrow(() -> new RuntimeException("Slot not found or unauthorized"));
+        Teacher teacher = (adminId != null)
+                ? teacherRepo.findByIdAndAdminId(teacherId, adminId)
+                        .or(() -> teacherRepo.findById(teacherId))
+                        .orElseThrow(() -> new RuntimeException("Teacher not found"))
+                : teacherRepo.findById(teacherId)
+                        .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+        TimetableStructure slot = (adminId != null)
+                ? structureRepo.findByIdAndAdminId(slotId, adminId)
+                        .or(() -> structureRepo.findById(slotId))
+                        .orElseThrow(() -> new RuntimeException("Slot not found"))
+                : structureRepo.findById(slotId)
+                        .orElseThrow(() -> new RuntimeException("Slot not found"));
 
         tt.setTeacher(teacher);
         tt.setSlot(slot);
-        tt.setDayOfWeek(day.toUpperCase());
+        tt.setDayOfWeek(normalizedDay);
 
-        if (tt.getAdmin() == null) {
+        if (tt.getAdmin() == null && adminId != null) {
             Admin admin = new Admin();
             admin.setId(adminId);
             tt.setAdmin(admin);
         }
 
-        // Handle classMasterId or classId or nested classMaster object
         Integer classId = extractId(body, "classMasterId", "classId", "classMaster");
         if (classId != null) {
-            tt.setClassMaster(classMasterRepo.findByIdAndAdminId(classId, adminId).orElse(null));
+            tt.setClassMaster((adminId != null)
+                    ? classMasterRepo.findByIdAndAdminId(classId, adminId).or(() -> classMasterRepo.findById(classId))
+                            .orElse(null)
+                    : classMasterRepo.findById(classId).orElse(null));
+        } else {
+            tt.setClassMaster(null);
         }
 
         Integer divisionId = extractId(body, "divisionMasterId", "divisionId", "divisionMaster");
         if (divisionId != null) {
-            tt.setDivisionMaster(divisionMasterRepo.findByIdAndAdminId(divisionId, adminId).orElse(null));
+            tt.setDivisionMaster((adminId != null)
+                    ? divisionMasterRepo.findByIdAndAdminId(divisionId, adminId)
+                            .or(() -> divisionMasterRepo.findById(divisionId)).orElse(null)
+                    : divisionMasterRepo.findById(divisionId).orElse(null));
+        } else {
+            tt.setDivisionMaster(null);
         }
 
         Integer subjectId = extractId(body, "subjectMasterId", "subjectId", "subjectMaster");
         if (subjectId != null) {
-            tt.setSubjectMaster(subjectMasterRepo.findByIdAndAdminId(subjectId, adminId).orElse(null));
+            tt.setSubjectMaster((adminId != null)
+                    ? subjectMasterRepo.findByIdAndAdminId(subjectId, adminId)
+                            .or(() -> subjectMasterRepo.findById(subjectId)).orElse(null)
+                    : subjectMasterRepo.findById(subjectId).orElse(null));
+        } else {
+            tt.setSubjectMaster(null);
         }
 
-        tt.setRoomNo((String) body.getOrDefault("roomNo", ""));
+        Object room = body.get("roomNo");
+        tt.setRoomNo(room == null ? "" : String.valueOf(room));
         return ttRepo.save(tt);
+    }
+
+    private Long resolveAdminIdForTeacher(int teacherId) {
+        Long adminId = AdminContextHolder.getAdminId();
+        if (adminId != null) {
+            return adminId;
+        }
+        return teacherRepo.findAdminIdByTeacherId(teacherId).orElse(null);
     }
 
     private Integer extractId(Map<String, Object> body, String idKey1, String idKey2, String objKey) {
